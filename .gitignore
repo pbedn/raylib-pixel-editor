@@ -1,0 +1,9 @@
+*.exe
+*.o
+*.png
+!docs/*.png
+
+# IDE setup
+*.sublime-project
+*.sublime-workspace
+compile_commands.json
