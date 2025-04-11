@@ -1,46 +1,57 @@
-#include "raylib.h"
 #include <stdio.h>
 #include <string.h>
 
-#define RAYGUI_IMPLEMENTATION // Define this in one source file
+#include "raylib.h"
+
+#define RAYGUI_IMPLEMENTATION  // Define this in one source file
 #include "raygui.h"
 
-#define GRID_SIZE 16
-#define PALLETE_SIZE 64
-#define PIXEL_SIZE 32
+// Define the maximum number of colors and palettes
 #define MAX_COLORS 64
-#define PALETTE_WIDTH 150
-
 #define MAX_PALETTES 16
 #define MAX_PALETTE_NAME 64
 
+// Define UI dimensions
 #define TOP_BAR_HEIGHT 30
 #define BOTTOM_BAR_HEIGHT 24
+#define PALETTE_WIDTH 150
 #define MARGIN 10
+#define GRID_SIZE 16
+#define PIXEL_SIZE 32
+#define PALLETE_SIZE 64
 
+// Structure to hold color palette data
 typedef struct {
-  Color colors[MAX_COLORS];
-  int count;
-  char name[MAX_PALETTE_NAME];
+  Color colors[MAX_COLORS];     // Array of colors in the palette
+  int count;                    // Number of colors in the palette
+  char name[MAX_PALETTE_NAME];  // Name of the palette
 } Palette;
 
-Palette palettes[MAX_PALETTES];
-int paletteCount = 0;
-int currentPaletteIndex = 0;
-int dropdownActive = 0;
+// Global variables for palettes and UI state
+Palette palettes[MAX_PALETTES];  // Array of palettes
+int paletteCount = 0;            // Current number of loaded palettes
+int currentPaletteIndex = 0;     // Index of the currently selected palette
+int dropdownActive = 0;          // State of the dropdown menu
 
+// Rectangle for dropdown menu bounds
 Rectangle dropdownBounds;
 
-Color canvas[GRID_SIZE][GRID_SIZE];
-Color currentColor;
+// Canvas grid for pixel drawing
+Color canvas[GRID_SIZE][GRID_SIZE];  // 2D array for pixel colors
+Color currentColor;                  // Currently selected color
 
+// Origin coordinates for the grid
 int gridOriginX, gridOriginY;
-char dropdownBuffer[1024] = {0}; // Buffer to hold the concatenated palette names
+
+// Buffer for concatenated palette names for dropdown
+char dropdownBuffer[1024] = {0};
 
 //----------------------------------------------------------------------------------
 // Functions Declaration
 //----------------------------------------------------------------------------------
 static void btnSaveAsPNG();
+static void btnUndo();
+static void btnRedo();
 void LoadPalettesFromDir(const char *dirPath);
 void DropdownBufferString();
 
@@ -50,8 +61,7 @@ void DropdownBufferString();
 int main(void) {
   const int gridPixels = GRID_SIZE * PIXEL_SIZE;
   const int screenWidth = gridPixels + PALETTE_WIDTH + 3 * MARGIN;
-  const int screenHeight =
-      gridPixels + TOP_BAR_HEIGHT + BOTTOM_BAR_HEIGHT + 2 * MARGIN;
+  const int screenHeight = gridPixels + TOP_BAR_HEIGHT + BOTTOM_BAR_HEIGHT + 2 * MARGIN;
 
   InitWindow(screenWidth, screenHeight, "Raylib Pixel Editor");
   SetTargetFPS(60);
@@ -66,22 +76,24 @@ int main(void) {
     return 1;
   }
 
+  // Set initial color and grid origin
   currentColor = palettes[0].colors[0];
   gridOriginX = MARGIN;
   gridOriginY = TOP_BAR_HEIGHT + MARGIN;
 
-  // Define the grid rectangle based on your grid's origin and size
+  // Define the grid rectangle for drawing
   Rectangle gridBounds = {
-      gridOriginX,
-      gridOriginY,
-      GRID_SIZE * PIXEL_SIZE, // Width of the grid
+      gridOriginX, gridOriginY,
+      GRID_SIZE * PIXEL_SIZE,  // Width of the grid
       GRID_SIZE * PIXEL_SIZE   // Height of the grid
   };
 
-  // Initialize the canvas
+  Rectangle undoButtonRect = {120, 5, 30, 30};  // Adjust position and size as needed
+  Rectangle redoButtonRect = {160, 5, 30, 30};  // Adjust position and size as needed
+
+  // Initialize the canvas with blank colors
   for (int y = 0; y < GRID_SIZE; y++)
-    for (int x = 0; x < GRID_SIZE; x++)
-      canvas[y][x] = BLANK;
+    for (int x = 0; x < GRID_SIZE; x++) canvas[y][x] = BLANK;
 
   // Create a string for the dropdown containing palette names
   DropdownBufferString();
@@ -90,7 +102,6 @@ int main(void) {
   int selectedPaletteIndex = 0;
 
   while (!WindowShouldClose()) {
-
     // Handle mouse
     Vector2 mouse = GetMousePosition();
     int gx = (mouse.x - gridOriginX) / PIXEL_SIZE;
@@ -98,30 +109,27 @@ int main(void) {
 
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
       if (CheckCollisionPointRec(mouse, dropdownBounds)) {
-        selectedPaletteIndex = !selectedPaletteIndex;
+        selectedPaletteIndex = !selectedPaletteIndex;  // Toggle dropdown
 
-      // Set the canvas color at the calculated grid position
+        // Set the canvas color at the calculated grid position
       } else if (CheckCollisionPointRec(mouse, gridBounds)) {
         canvas[gy][gx] = currentColor;
 
-      // CAN THIS BE SIMPLIFIED & REFACTORED
-     // Set the palette color at the calculated palette position
+        // Set the palette color at the calculated palette position
       } else {
         int px = gridOriginX + GRID_SIZE * PIXEL_SIZE + MARGIN;
         int ph = screenHeight - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT - 2 * MARGIN;
         int count = palettes[currentPaletteIndex].count;
-        int maxPerColumn = 8; // Maximum number of items per column
+        int maxPerColumn = 8;  // Maximum number of items per column
 
         for (int i = 0; i < count; i++) {
           // Calculate the column and row based on the index
-          int column =
-              i / maxPerColumn; // 0 for first column, 1 for second column, etc.
-          int row = i % maxPerColumn; // Row within the column
+          int column = i / maxPerColumn;  // 0 for first column, 1 for second column, etc.
+          int row = i % maxPerColumn;     // Row within the column
 
-          // Calculate the rectangle for the color
+          // Define rectangle for the color
           Rectangle colRect = {px + column * (PALLETE_SIZE + MARGIN),
-                               gridOriginY + row * PALLETE_SIZE, PALLETE_SIZE,
-                               PALLETE_SIZE};
+                               gridOriginY + row * PALLETE_SIZE, PALLETE_SIZE, PALLETE_SIZE};
 
           // Check if the mouse is over the color rectangle
           if (CheckCollisionPointRec(mouse, colRect)) {
@@ -130,24 +138,9 @@ int main(void) {
         }
       }
     } else if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
-      if (gx >= 1 && gy >= 1 && gx < GRID_SIZE - 1 && gy < GRID_SIZE - 1 &&
-          mouse.y < screenHeight - BOTTOM_BAR_HEIGHT) {
-        canvas[gy][gx] = BLANK;
-      }
+      // Clear pixel on right-click if within bounds
+      if (CheckCollisionPointRec(mouse, gridBounds)) canvas[gy][gx] = BLANK;
     }
-
-    // IS THIS NEEDED ?
-    // if (dropdownActive && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-    //     for (int i = 0; i < paletteCount; i++) {
-    //         Rectangle item = {dropdownBounds.x, dropdownBounds.y + 20 + i *
-    //         20, dropdownBounds.width, 20}; if (CheckCollisionPointRec(mouse,
-    //         item)) {
-    //             currentPaletteIndex = i;
-    //             currentColor = palettes[i].colors[0];
-    //             dropdownActive = 0;
-    //         }
-    //     }
-    // }
 
     if (IsKeyPressed(KEY_S)) btnSaveAsPNG();
 
@@ -159,58 +152,59 @@ int main(void) {
     Rectangle buttonRect1 = {10, 5, 100, 30};
     if (GuiButton(buttonRect1, "Save PNG")) btnSaveAsPNG();
 
+    // Rectangle undoIconRect = { 120, 5, 30, 30 };
+    // GuiDrawIcon(56, 120, 5, 2, RAYWHITE);
+    
+    // bool isUndoClicked = CheckCollisionPointRec(mouse, undoIconRect) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    // if (isUndoClicked) DrawRectangleLines(undoIconRect.x, undoIconRect.y, undoIconRect.width, undoIconRect.height, RED);
+
+    // Rectangle redoIconRect = { 150, 10, 30, 30 };
+    // GuiDrawIcon(57, 160, 5, 2, RAYWHITE);
+    // bool isRedoClicked = CheckCollisionPointRec(mouse, redoIconRect) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    // if (isRedoClicked) DrawRectangleLines(redoIconRect.x, redoIconRect.y, redoIconRect.width, redoIconRect.height, RED);
+
     // Grid
     for (int y = 0; y < GRID_SIZE; y++) {
       for (int x = 0; x < GRID_SIZE; x++) {
         Color col = (canvas[y][x].a == 0) ? DARKGRAY : canvas[y][x];
-        DrawRectangle(gridOriginX + x * PIXEL_SIZE,
-                      gridOriginY + y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE,
-                      col);
-        DrawRectangleLines(gridOriginX + x * PIXEL_SIZE,
-                           gridOriginY + y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE,
-                           GRAY);
+        DrawRectangle(gridOriginX + x * PIXEL_SIZE, gridOriginY + y * PIXEL_SIZE, PIXEL_SIZE,
+                      PIXEL_SIZE, col);
+        DrawRectangleLines(gridOriginX + x * PIXEL_SIZE, gridOriginY + y * PIXEL_SIZE, PIXEL_SIZE,
+                           PIXEL_SIZE, GRAY);
       }
     }
 
     // Palette
     int paletteX = gridOriginX + GRID_SIZE * PIXEL_SIZE + MARGIN;
-    int paletteH =
-        screenHeight - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT - 2 * MARGIN;
+    int paletteH = screenHeight - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT - 2 * MARGIN;
     int count = palettes[currentPaletteIndex].count;
-    int maxPerColumn = 8; // Maximum number of items per column
+    int maxPerColumn = 8;  // Maximum number of items per column
     for (int i = 0; i < count; i++) {
       // Calculate the column and row based on the index
-      int column =
-          i / maxPerColumn; // 0 for first column, 1 for second column, etc.
-      int row = i % maxPerColumn; // Row within the column
+      int column = i / maxPerColumn;  // 0 for first column, 1 for second column, etc.
+      int row = i % maxPerColumn;     // Row within the column
       // Calculate the x and y positions
-      int xPosition = paletteX + column * (PALLETE_SIZE +
-                                           MARGIN); // Adjust x for each column
-      int yPosition =
-          gridOriginY + row * PALLETE_SIZE; // Y position based on row
+      int xPosition = paletteX + column * (PALLETE_SIZE + MARGIN);  // Adjust x for each column
+      int yPosition = gridOriginY + row * PALLETE_SIZE;             // Y position based on row
       DrawRectangle(xPosition, yPosition, PALLETE_SIZE, PALLETE_SIZE,
                     palettes[currentPaletteIndex].colors[i]);
     }
 
-    // Dropdown for palette selection using Raygui
-    if (GuiDropdownBox((Rectangle){paletteX, 5, PALLETE_SIZE * 2 + MARGIN, 30},
-                       dropdownBuffer, &selectedPaletteIndex, dropdownActive)) {
-      dropdownActive = !dropdownActive; // Toggle dropdown state
-      currentPaletteIndex =
-          selectedPaletteIndex; // Update the current palette index
-      currentColor = palettes[currentPaletteIndex]
-                         .colors[0]; // Set the current color to the first color
-                                     // of the selected palette
+    // Draw dropdown for palette selection using Raygui
+    if (GuiDropdownBox((Rectangle){paletteX, 5, PALLETE_SIZE * 2 + MARGIN, 30}, dropdownBuffer,
+                       &selectedPaletteIndex, dropdownActive)) {
+      dropdownActive = !dropdownActive;                        // Toggle dropdown state
+      currentPaletteIndex = selectedPaletteIndex;              // Update the current palette index
+      currentColor = palettes[currentPaletteIndex].colors[0];  // Set the current color to the first
+                                                               // color of the selected palette
     }
 
     // Bottom status bar
-    DrawRectangle(0, screenHeight - BOTTOM_BAR_HEIGHT, screenWidth,
-                  BOTTOM_BAR_HEIGHT, LIGHTGRAY);
+    DrawRectangle(0, screenHeight - BOTTOM_BAR_HEIGHT, screenWidth, BOTTOM_BAR_HEIGHT, LIGHTGRAY);
     DrawTextEx(uiFont,
-               TextFormat("Palette: %s | Color: #%02X%02X%02X",
-                          palettes[currentPaletteIndex].name, currentColor.r,
-                          currentColor.g, currentColor.b),
-               (Vector2){10, screenHeight - BOTTOM_BAR_HEIGHT + 8}, uiFont.baseSize*0.26f, 1,
+               TextFormat("Palette: %s | Color: #%02X%02X%02X", palettes[currentPaletteIndex].name,
+                          currentColor.r, currentColor.g, currentColor.b),
+               (Vector2){10, screenHeight - BOTTOM_BAR_HEIGHT + 8}, uiFont.baseSize * 0.26f, 1,
                BLACK);
 
     EndDrawing();
@@ -227,10 +221,15 @@ int main(void) {
 static void btnSaveAsPNG() {
   Image image = GenImageColor(GRID_SIZE, GRID_SIZE, BLANK);
   for (int y = 0; y < GRID_SIZE; y++)
-    for (int x = 0; x < GRID_SIZE; x++)
-      ImageDrawPixel(&image, x, y, canvas[y][x]);
+    for (int x = 0; x < GRID_SIZE; x++) ImageDrawPixel(&image, x, y, canvas[y][x]);
   ExportImage(image, "pixel_art.png");
   UnloadImage(image);
+}
+
+static void btnUndo() {
+}
+
+static void btnRedo() {
 }
 
 //------------------------------------------------------------------------------------
@@ -239,24 +238,19 @@ static void btnSaveAsPNG() {
 void LoadPalettesFromDir(const char *dirPath) {
   FilePathList files = LoadDirectoryFiles(dirPath);
   for (int i = 0; i < files.count && paletteCount < MAX_PALETTES; i++) {
-    if (!IsPathFile(files.paths[i]))
-      continue;
+    if (!IsPathFile(files.paths[i])) continue;
 
     FILE *fp = fopen(files.paths[i], "r");
-    if (!fp)
-      continue;
+    if (!fp) continue;
 
     Palette p = {0};
-    strncpy(p.name, GetFileNameWithoutExt(files.paths[i]),
-            MAX_PALETTE_NAME - 1);
+    strncpy(p.name, GetFileNameWithoutExt(files.paths[i]), MAX_PALETTE_NAME - 1);
     char line[256];
 
     while (fgets(line, sizeof(line), fp)) {
-      if (line[0] == ';' || strlen(line) < 8)
-        continue;
+      if (line[0] == ';' || strlen(line) < 8) continue;
       unsigned int r, g, b;
-      if (sscanf(line, "FF%02x%02x%02x", &r, &g, &b) == 3 &&
-          p.count < MAX_COLORS) {
+      if (sscanf(line, "FF%02x%02x%02x", &r, &g, &b) == 3 && p.count < MAX_COLORS) {
         p.colors[p.count++] = (Color){r, g, b, 255};
       }
     }
@@ -270,14 +264,13 @@ void LoadPalettesFromDir(const char *dirPath) {
 }
 
 void DropdownBufferString() {
-  int currentLength =
-      strlen(dropdownBuffer); // Start with the current length (initially 0)
+  int currentLength = strlen(dropdownBuffer);  // Start with the current length (initially 0)
 
   for (int i = 0; i < paletteCount; i++) {
     // Format the new item
-    char item[256]; // Temporary buffer for the item
+    char item[256];  // Temporary buffer for the item
     snprintf(item, sizeof(item), "%s",
-             palettes[i].name); // Create the item string
+             palettes[i].name);  // Create the item string
 
     // Calculate the length of the new item
     int itemLength = strlen(item);
@@ -286,18 +279,16 @@ void DropdownBufferString() {
     if (currentLength + itemLength + (i > 0 ? 1 : 0) < sizeof(dropdownBuffer)) {
       if (i > 0) {
         strncat(dropdownBuffer, ";",
-                sizeof(dropdownBuffer) - currentLength - 1); // Add separator
-        currentLength += 1; // Update the current length for the separator
+                sizeof(dropdownBuffer) - currentLength - 1);  // Add separator
+        currentLength += 1;  // Update the current length for the separator
       }
       strncat(dropdownBuffer, item,
-              sizeof(dropdownBuffer) - currentLength - 1); // Append the item
-      currentLength += itemLength; // Update the current length
+              sizeof(dropdownBuffer) - currentLength - 1);  // Append the item
+      currentLength += itemLength;                          // Update the current length
     } else {
       // Handle the case where the buffer is too small
-      TraceLog(
-          LOG_WARNING,
-          "Dropdown buffer size exceeded. Some palettes may not be displayed.");
-      break; // Exit the loop if the buffer is full
+      TraceLog(LOG_WARNING, "Dropdown buffer size exceeded. Some palettes may not be displayed.");
+      break;  // Exit the loop if the buffer is full
     }
   }
 }
