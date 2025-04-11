@@ -1,0 +1,9 @@
+;paint.net Palette File
+;Downloaded from Lospec.com/palette-list
+;Palette Name: 2bit demichrome
+;Description: A 4 colour palette meant to look very robotic or mechanical, with a cold metallic dark grey and a warm dated plastic light grey balancing perfectly
+;Colors: 4
+FF211e20
+FF555568
+FFa0a08b
+FFe9efec

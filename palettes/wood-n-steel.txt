@@ -1,0 +1,11 @@
+;paint.net Palette File
+;Downloaded from Lospec.com/palette-list
+;Palette Name: WOOD n STEEL
+;Description: Robots, skyscraper buildings, cars, metal, and trees.
+;Colors: 6
+FFf6f2ec
+FFc2a386
+FF9c703f
+FF1e1b15
+FF857081
+FF8493a0

@@ -1,0 +1,10 @@
+;paint.net Palette File
+;Downloaded from Lospec.com/palette-list
+;Palette Name: skylyte5
+;Description: a dark palette with a sunst flare
+;Colors: 5
+FF2d2b33
+FF453663
+FF7c4a5a
+FFbf6d69
+FFeef0e0
