@@ -30,7 +30,7 @@ typedef struct {
 // Global variables for palettes and UI state
 Palette palettes[MAX_PALETTES];  // Array of palettes
 int paletteCount = 0;            // Current number of loaded palettes
-int currentPaletteIndex = 0;     // Index of the currently selected palette
+int currentPaletteIndex = 6;     // Index of the currently selected palette
 int dropdownActive = 0;          // State of the dropdown menu
 bool showTextInputBox = false;
 bool showTextInputBox2 = false;
@@ -105,7 +105,7 @@ int main(void) {
   DropdownBufferString();
 
   int dropdownActive = 0;
-  int selectedPaletteIndex = 0;
+  int selectedPaletteIndex = 6;
 
   while (!WindowShouldClose()) {
     // Handle mouse
