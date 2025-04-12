@@ -1,6 +1,7 @@
 *.exe
 *.o
 *.png
+*.bin
 !docs/*.png
 playground/
 

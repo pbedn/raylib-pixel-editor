@@ -33,7 +33,11 @@ int paletteCount = 0;            // Current number of loaded palettes
 int currentPaletteIndex = 0;     // Index of the currently selected palette
 int dropdownActive = 0;          // State of the dropdown menu
 bool showTextInputBox = false;
+bool showTextInputBox2 = false;
+bool showTextInputBox3 = false;
 char textInput[256] = { 0 };
+char textBoxText[64] = "filename";
+bool textBoxEditMode = false;
 
 // Rectangle for dropdown menu bounds
 Rectangle dropdownBounds;
@@ -51,7 +55,11 @@ char dropdownBuffer[1024] = {0};
 //----------------------------------------------------------------------------------
 // Functions Declaration
 //----------------------------------------------------------------------------------
-static void btnSaveAsPNG(char *);
+void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const char *));
+static void btnSaveAsPNG(const char *);
+static void btnSaveText(const char *filename);
+static void btnLoadText(const char *filename);
+static void parseLine(const char *line, int rowIndex);
 
 void LoadPalettesFromDir(const char *dirPath);
 void DropdownBufferString();
@@ -110,7 +118,7 @@ int main(void) {
         selectedPaletteIndex = !selectedPaletteIndex;  // Toggle dropdown
 
         // Set the canvas color at the calculated grid position
-      } else if (CheckCollisionPointRec(mouse, gridBounds)) {
+      } else if (CheckCollisionPointRec(mouse, gridBounds) && !showTextInputBox && !showTextInputBox2 && !showTextInputBox3) {
         canvas[gy][gx] = currentColor;
 
         // Set the palette color at the calculated palette position
@@ -134,17 +142,22 @@ int main(void) {
           }
         }
       }
-    } else if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+    } else if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && !GuiIsLocked()) {
       // Clear pixel on right-click if within bounds
       if (CheckCollisionPointRec(mouse, gridBounds)) canvas[gy][gx] = BLANK;
     }
 
     // ─────────── Drawing UI ─────────────
+    GuiLoadStyleDefault();
     BeginDrawing();
     ClearBackground(DARKGRAY);
 
     // Top bar
-    if (GuiButton((Rectangle){ 10, 5, 125, 30 }, GuiIconText(ICON_FILE_SAVE, "Save File as PNG")) || IsKeyPressed(KEY_S)) showTextInputBox = true;
+    if (GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG")) || IsKeyPressed(KEY_S)) showTextInputBox = true;
+
+    if (GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT")) || IsKeyPressed(KEY_B)) showTextInputBox2 = true;
+
+    if (GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT")) || IsKeyPressed(KEY_L)) showTextInputBox3 = true;
 
     // Grid
     for (int y = 0; y < GRID_SIZE; y++) {
@@ -181,23 +194,12 @@ int main(void) {
                                                                // color of the selected palette
     }
 
-    if (showTextInputBox)
-    {
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(DARKGRAY, 0.8f));
-        int result = GuiTextInputBox(
-          (Rectangle){ (float)GetScreenWidth()/2 - 120, (float)GetScreenHeight()/2 - 60, 240, 140 },
-          GuiIconText(ICON_FILE_SAVE, "Save file as PNG"), "Specify filename:", "Ok;Cancel", textInput, 255, NULL);
-
-        if (result == 1)
-        {
-          btnSaveAsPNG(textInput);
-        }
-
-        if ((result == 0) || (result == 1) || (result == 2))
-        {
-            showTextInputBox = false;
-            TextCopy(textInput, "\0");
-        }
+    if (showTextInputBox) {
+        ShowTextInputBox(&showTextInputBox, "Save file as PNG", btnSaveAsPNG);
+    } else if (showTextInputBox2) {
+        ShowTextInputBox(&showTextInputBox2, "Save file as TXT", btnSaveText);
+    } else if (showTextInputBox3) {
+        ShowTextInputBox(&showTextInputBox3, "Load TXT file", btnLoadText);
     }
 
     // Bottom status bar
@@ -219,7 +221,23 @@ int main(void) {
 //------------------------------------------------------------------------------------
 // Controls Functions Definitions (local)
 //------------------------------------------------------------------------------------
-static void btnSaveAsPNG(char * textInput) {
+void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const char *)) {
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(DARKGRAY, 0.8f));
+    int result = GuiTextInputBox(
+        (Rectangle){ (float)GetScreenWidth()/2 - 120, (float)GetScreenHeight()/2 - 60, 240, 140 },
+        GuiIconText(ICON_FILE_SAVE, title), "Specify file name:", "Ok;Cancel", textInput, 255, NULL);
+
+    if (result == 1) {
+        callback(textInput);
+    }
+
+    if (result == 0 || result == 1 || result == 2) {
+        *showBox = false;
+        TextCopy(textInput, "\0");
+    }
+}
+
+static void btnSaveAsPNG(const char * textInput) {
   Image image = GenImageColor(GRID_SIZE, GRID_SIZE, BLANK);
   for (int y = 0; y < GRID_SIZE; y++)
     for (int x = 0; x < GRID_SIZE; x++) ImageDrawPixel(&image, x, y, canvas[y][x]);
@@ -227,6 +245,107 @@ static void btnSaveAsPNG(char * textInput) {
   sprintf(filename, "%s.png", textInput);
   ExportImage(image, filename);
   UnloadImage(image);
+}
+
+static void btnSaveText(const char *filename) {
+    // Create a buffer to hold the text data
+    char *textBuffer = (char *)malloc(GRID_SIZE * GRID_SIZE * 30); // Allocate enough space
+    if (textBuffer == NULL) {
+        TraceLog(LOG_ERROR, "Memory allocation failed.\n");
+        return;
+    }
+
+    // Fill the buffer with canvas data
+    int offset = 0;
+    offset += sprintf(textBuffer + offset, "Canvas Data (GRID_SIZE: %d)\n", GRID_SIZE);
+    offset += sprintf(textBuffer + offset, "# Format: r,g,b,a\n\n"); // Add a comment about the format
+
+    for (int y = 0; y < GRID_SIZE; y++) {
+        offset += sprintf(textBuffer + offset, "Row %03d: ", y); // Indicate the row number
+        for (int x = 0; x < GRID_SIZE; x++) {
+            // Format: r,g,b,a with zero padding
+            offset += sprintf(textBuffer + offset, "%03d,%03d,%03d,%03d", canvas[y][x].r, canvas[y][x].g, canvas[y][x].b, canvas[y][x].a);
+            if (x < GRID_SIZE - 1) {
+                offset += sprintf(textBuffer + offset, " | "); // Use a separator between colors
+            }
+        }
+        offset += sprintf(textBuffer + offset, "\n"); // Newline after each row
+    }
+
+    // Save the text data to a file
+    char newFilename[256];
+    sprintf(newFilename, "%s.bin", filename);
+    if (!SaveFileText(newFilename, textBuffer)) {
+        TraceLog(LOG_ERROR, "Error saving file.\n");
+    }
+
+    free(textBuffer);
+}
+
+static void btnLoadText(const char *filename) {
+    // Load the text data from the file
+    char newFilename[256];
+    sprintf(newFilename, "%s.bin", filename);
+    char *textData = LoadFileText(newFilename);
+    if (textData == NULL) {
+        TraceLog(LOG_ERROR, "Could not load file: %s", filename);
+        return;
+    }
+
+    // Reset the canvas to transparent values
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            canvas[y][x] = BLANK;
+        }
+    }
+    // Parse the text data
+    char *lineStart = textData;
+    int lineCount = 0;
+
+    while (*lineStart != '\0') {
+        // Find the end of the line
+        char *lineEnd = strchr(lineStart, '\n');
+        if (lineEnd == NULL) lineEnd = lineStart + strlen(lineStart); // Handle last line
+
+        // Null-terminate the line
+        char temp = *lineEnd;
+        *lineEnd = '\0';
+
+        // Skip header and comment lines
+        if (lineCount >= 2) { // Start processing from the third line (index 2)
+            // TraceLog(LOG_INFO, "Processing line: %s", lineStart);
+            parseLine(lineStart, lineCount - 3); // Adjust for skipped lines
+        }
+
+        // Restore the original character
+        *lineEnd = temp;
+
+        // Move to the next line
+        lineStart = (*lineEnd == '\n') ? lineEnd + 1 : lineEnd; // Skip \n
+        lineCount++;
+    }
+    UnloadFileText(textData);
+}
+
+static void parseLine(const char *line, int rowIndex) {
+    char *dataPart = strchr(line, ':'); // Find the colon
+    if (dataPart != NULL) {
+        dataPart += 2; // Move past ": "
+        char *colorToken = strtok(dataPart, " | "); // Split by separator
+
+        for (int x = 0; x < GRID_SIZE && colorToken != NULL; x++) {
+            int r, g, b, a;
+            if (sscanf(colorToken, "%3d,%3d,%3d,%3d", &r, &g, &b, &a) == 4) {
+                canvas[rowIndex][x] = (Color){(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a};
+                // TraceLog(LOG_DEBUG, "Loaded color at [%d][%d]: R=%d, G=%d, B=%d, A=%d", rowIndex, x, r, g, b, a);
+            } else {
+                TraceLog(LOG_WARNING, "Error parsing color at [%d][%d]: %s", rowIndex, x, colorToken);
+            }
+            colorToken = strtok(NULL, " | "); // Get the next color token
+        }
+    } else {
+        TraceLog(LOG_WARNING, "No data found for Row %03d", rowIndex);
+    }
 }
 
 //------------------------------------------------------------------------------------
