@@ -32,6 +32,8 @@ Palette palettes[MAX_PALETTES];  // Array of palettes
 int paletteCount = 0;            // Current number of loaded palettes
 int currentPaletteIndex = 0;     // Index of the currently selected palette
 int dropdownActive = 0;          // State of the dropdown menu
+bool showTextInputBox = false;
+char textInput[256] = { 0 };
 
 // Rectangle for dropdown menu bounds
 Rectangle dropdownBounds;
@@ -49,9 +51,8 @@ char dropdownBuffer[1024] = {0};
 //----------------------------------------------------------------------------------
 // Functions Declaration
 //----------------------------------------------------------------------------------
-static void btnSaveAsPNG();
-static void btnUndo();
-static void btnRedo();
+static void btnSaveAsPNG(char *);
+
 void LoadPalettesFromDir(const char *dirPath);
 void DropdownBufferString();
 
@@ -88,9 +89,6 @@ int main(void) {
       GRID_SIZE * PIXEL_SIZE   // Height of the grid
   };
 
-  Rectangle undoButtonRect = {120, 5, 30, 30};  // Adjust position and size as needed
-  Rectangle redoButtonRect = {160, 5, 30, 30};  // Adjust position and size as needed
-
   // Initialize the canvas with blank colors
   for (int y = 0; y < GRID_SIZE; y++)
     for (int x = 0; x < GRID_SIZE; x++) canvas[y][x] = BLANK;
@@ -118,7 +116,6 @@ int main(void) {
         // Set the palette color at the calculated palette position
       } else {
         int px = gridOriginX + GRID_SIZE * PIXEL_SIZE + MARGIN;
-        int ph = screenHeight - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT - 2 * MARGIN;
         int count = palettes[currentPaletteIndex].count;
         int maxPerColumn = 8;  // Maximum number of items per column
 
@@ -142,26 +139,12 @@ int main(void) {
       if (CheckCollisionPointRec(mouse, gridBounds)) canvas[gy][gx] = BLANK;
     }
 
-    if (IsKeyPressed(KEY_S)) btnSaveAsPNG();
-
     // ─────────── Drawing UI ─────────────
     BeginDrawing();
     ClearBackground(DARKGRAY);
 
     // Top bar
-    Rectangle buttonRect1 = {10, 5, 100, 30};
-    if (GuiButton(buttonRect1, "Save PNG")) btnSaveAsPNG();
-
-    // Rectangle undoIconRect = { 120, 5, 30, 30 };
-    // GuiDrawIcon(56, 120, 5, 2, RAYWHITE);
-    
-    // bool isUndoClicked = CheckCollisionPointRec(mouse, undoIconRect) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-    // if (isUndoClicked) DrawRectangleLines(undoIconRect.x, undoIconRect.y, undoIconRect.width, undoIconRect.height, RED);
-
-    // Rectangle redoIconRect = { 150, 10, 30, 30 };
-    // GuiDrawIcon(57, 160, 5, 2, RAYWHITE);
-    // bool isRedoClicked = CheckCollisionPointRec(mouse, redoIconRect) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-    // if (isRedoClicked) DrawRectangleLines(redoIconRect.x, redoIconRect.y, redoIconRect.width, redoIconRect.height, RED);
+    if (GuiButton((Rectangle){ 10, 5, 125, 30 }, GuiIconText(ICON_FILE_SAVE, "Save File as PNG")) || IsKeyPressed(KEY_S)) showTextInputBox = true;
 
     // Grid
     for (int y = 0; y < GRID_SIZE; y++) {
@@ -176,7 +159,6 @@ int main(void) {
 
     // Palette
     int paletteX = gridOriginX + GRID_SIZE * PIXEL_SIZE + MARGIN;
-    int paletteH = screenHeight - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT - 2 * MARGIN;
     int count = palettes[currentPaletteIndex].count;
     int maxPerColumn = 8;  // Maximum number of items per column
     for (int i = 0; i < count; i++) {
@@ -199,6 +181,25 @@ int main(void) {
                                                                // color of the selected palette
     }
 
+    if (showTextInputBox)
+    {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(DARKGRAY, 0.8f));
+        int result = GuiTextInputBox(
+          (Rectangle){ (float)GetScreenWidth()/2 - 120, (float)GetScreenHeight()/2 - 60, 240, 140 },
+          GuiIconText(ICON_FILE_SAVE, "Save file as PNG"), "Specify filename:", "Ok;Cancel", textInput, 255, NULL);
+
+        if (result == 1)
+        {
+          btnSaveAsPNG(textInput);
+        }
+
+        if ((result == 0) || (result == 1) || (result == 2))
+        {
+            showTextInputBox = false;
+            TextCopy(textInput, "\0");
+        }
+    }
+
     // Bottom status bar
     DrawRectangle(0, screenHeight - BOTTOM_BAR_HEIGHT, screenWidth, BOTTOM_BAR_HEIGHT, LIGHTGRAY);
     DrawTextEx(uiFont,
@@ -218,18 +219,14 @@ int main(void) {
 //------------------------------------------------------------------------------------
 // Controls Functions Definitions (local)
 //------------------------------------------------------------------------------------
-static void btnSaveAsPNG() {
+static void btnSaveAsPNG(char * textInput) {
   Image image = GenImageColor(GRID_SIZE, GRID_SIZE, BLANK);
   for (int y = 0; y < GRID_SIZE; y++)
     for (int x = 0; x < GRID_SIZE; x++) ImageDrawPixel(&image, x, y, canvas[y][x]);
-  ExportImage(image, "pixel_art.png");
+  char filename[256];
+  sprintf(filename, "%s.png", textInput);
+  ExportImage(image, filename);
   UnloadImage(image);
-}
-
-static void btnUndo() {
-}
-
-static void btnRedo() {
 }
 
 //------------------------------------------------------------------------------------
