@@ -60,6 +60,7 @@ static void btnSaveAsPNG(const char *);
 static void btnSaveText(const char *filename);
 static void btnLoadText(const char *filename);
 static void parseLine(const char *line, int rowIndex);
+static void NewCanvas();
 
 void LoadPalettesFromDir(const char *dirPath);
 void DropdownBufferString();
@@ -98,8 +99,7 @@ int main(void) {
   };
 
   // Initialize the canvas with blank colors
-  for (int y = 0; y < GRID_SIZE; y++)
-    for (int x = 0; x < GRID_SIZE; x++) canvas[y][x] = BLANK;
+  NewCanvas();
 
   // Create a string for the dropdown containing palette names
   DropdownBufferString();
@@ -113,6 +113,7 @@ int main(void) {
     int gx = (mouse.x - gridOriginX) / PIXEL_SIZE;
     int gy = (mouse.y - gridOriginY) / PIXEL_SIZE;
 
+    // ─────────── Logic ─────────────
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
       if (CheckCollisionPointRec(mouse, dropdownBounds)) {
         selectedPaletteIndex = !selectedPaletteIndex;  // Toggle dropdown
@@ -158,6 +159,8 @@ int main(void) {
     if (GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT")) || IsKeyPressed(KEY_B)) showTextInputBox2 = true;
 
     if (GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT")) || IsKeyPressed(KEY_L)) showTextInputBox3 = true;
+    
+    if (GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas")) || IsKeyPressed(KEY_N)) NewCanvas();
 
     // Grid
     for (int y = 0; y < GRID_SIZE; y++) {
@@ -219,7 +222,7 @@ int main(void) {
 }
 
 //------------------------------------------------------------------------------------
-// Controls Functions Definitions (local)
+// Controls Functions Definitions
 //------------------------------------------------------------------------------------
 void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const char *)) {
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(DARKGRAY, 0.8f));
@@ -293,11 +296,8 @@ static void btnLoadText(const char *filename) {
     }
 
     // Reset the canvas to transparent values
-    for (int y = 0; y < GRID_SIZE; y++) {
-        for (int x = 0; x < GRID_SIZE; x++) {
-            canvas[y][x] = BLANK;
-        }
-    }
+    NewCanvas();
+
     // Parse the text data
     char *lineStart = textData;
     int lineCount = 0;
@@ -325,6 +325,13 @@ static void btnLoadText(const char *filename) {
         lineCount++;
     }
     UnloadFileText(textData);
+}
+
+static void NewCanvas() {
+  for (int y = 0; y < GRID_SIZE; y++) {
+      for (int x = 0; x < GRID_SIZE; x++)
+          canvas[y][x] = BLANK;
+  }
 }
 
 static void parseLine(const char *line, int rowIndex) {
