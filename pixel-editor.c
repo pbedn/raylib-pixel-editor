@@ -6,7 +6,7 @@
 #define RAYGUI_IMPLEMENTATION  // Define this in one source file
 #include "raygui.h"
 
-#include "../styles/style_dark.h"              // raygui style: dark         
+#include "../styles/style_dark.h"              // raygui style: dark
 
 
 // Define the maximum number of colors and palettes
@@ -29,6 +29,9 @@ typedef struct {
   int count;                    // Number of colors in the palette
   char name[MAX_PALETTE_NAME];  // Name of the palette
 } Palette;
+
+// Directory name for user output
+const char *libraryDir = "library";
 
 // Global variables for palettes and UI state
 Palette palettes[MAX_PALETTES];  // Array of palettes
@@ -89,6 +92,9 @@ int main(void) {
     return 1;
   }
 
+  // create 'library' folder for user saving
+  MakeDirectory(libraryDir);
+
   // Set initial color and grid origin
   currentColor = palettes[0].colors[0];
   gridOriginX = MARGIN;
@@ -111,8 +117,6 @@ int main(void) {
   int selectedPaletteIndex = 6;
   int toggleThemeSliderActive = 0;
   int prevToggleThemeSliderActive = 1;
-  int visualStyleActive = 0;
-  int prevVisualStyleActive = 0;
 
   while (!WindowShouldClose()) {
     // Handle mouse
@@ -166,9 +170,9 @@ int main(void) {
     if (GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT")) || IsKeyPressed(KEY_B)) showTextInputBox2 = true;
 
     if (GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT")) || IsKeyPressed(KEY_L)) showTextInputBox3 = true;
-    
+
     if (GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas")) || IsKeyPressed(KEY_N)) NewCanvas();
-    
+
     // Light / Dark Slider
     GuiSetStyle(SLIDER, SLIDER_PADDING, 2);
     GuiToggleSlider((Rectangle){ 450, 5, 60, 30 }, "#142#;#142#", &toggleThemeSliderActive);
@@ -263,7 +267,7 @@ static void btnSaveAsPNG(const char * textInput) {
   for (int y = 0; y < GRID_SIZE; y++)
     for (int x = 0; x < GRID_SIZE; x++) ImageDrawPixel(&image, x, y, canvas[y][x]);
   char filename[256];
-  sprintf(filename, "%s.png", textInput);
+  sprintf(filename, "%s/%s.png", libraryDir, textInput);
   ExportImage(image, filename);
   UnloadImage(image);
 }
@@ -295,7 +299,7 @@ static void btnSaveText(const char *filename) {
 
     // Save the text data to a file
     char newFilename[256];
-    sprintf(newFilename, "%s.bin", filename);
+    sprintf(newFilename, "%s/%s.bin", libraryDir, filename);
     if (!SaveFileText(newFilename, textBuffer)) {
         TraceLog(LOG_ERROR, "Error saving file.\n");
     }
@@ -306,7 +310,7 @@ static void btnSaveText(const char *filename) {
 static void btnLoadText(const char *filename) {
     // Load the text data from the file
     char newFilename[256];
-    sprintf(newFilename, "%s.bin", filename);
+    sprintf(newFilename, "%s/%s.bin", libraryDir, filename);
     char *textData = LoadFileText(newFilename);
     if (textData == NULL) {
         TraceLog(LOG_ERROR, "Could not load file: %s", filename);
