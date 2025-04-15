@@ -19,6 +19,7 @@
 #define BOTTOM_BAR_HEIGHT 24
 #define PALETTE_WIDTH 150
 #define MARGIN 10
+#define PADDING 2
 #define GRID_SIZE 16
 #define PIXEL_SIZE 32
 #define PALLETE_SIZE 64
@@ -200,8 +201,13 @@ int main(void) {
       // Calculate the x and y positions
       int xPosition = paletteX + column * (PALLETE_SIZE + MARGIN);  // Adjust x for each column
       int yPosition = gridOriginY + row * PALLETE_SIZE;             // Y position based on row
-      DrawRectangle(xPosition, yPosition, PALLETE_SIZE, PALLETE_SIZE,
-                    palettes[currentPaletteIndex].colors[i]);
+      // 1st option draw full rectangle (white palette colors not visible in light theme )
+      // DrawRectangle(xPosition, yPosition, PALLETE_SIZE, PALLETE_SIZE,
+      //               palettes[currentPaletteIndex].colors[i]);
+      // 2nd option - add paddings to rectangle and draw lines to get better contrast (though I do like it as much)
+      Rectangle recLines = {xPosition + PADDING, yPosition + PADDING, PALLETE_SIZE - PADDING * 2, PALLETE_SIZE - PADDING * 2};
+      DrawRectanglePro(recLines, (Vector2){0,0}, 0.0f, palettes[currentPaletteIndex].colors[i]);
+      DrawRectangleLinesEx(recLines, 1.0f, GetColor(GuiGetStyle(DEFAULT, LINE_COLOR)));
     }
 
     // Draw dropdown for palette selection using Raygui
