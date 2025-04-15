@@ -6,6 +6,9 @@
 #define RAYGUI_IMPLEMENTATION  // Define this in one source file
 #include "raygui.h"
 
+#include "../styles/style_dark.h"              // raygui style: dark         
+
+
 // Define the maximum number of colors and palettes
 #define MAX_COLORS 64
 #define MAX_PALETTES 16
@@ -106,6 +109,10 @@ int main(void) {
 
   int dropdownActive = 0;
   int selectedPaletteIndex = 6;
+  int toggleThemeSliderActive = 0;
+  int prevToggleThemeSliderActive = 1;
+  int visualStyleActive = 0;
+  int prevVisualStyleActive = 0;
 
   while (!WindowShouldClose()) {
     // Handle mouse
@@ -149,11 +156,11 @@ int main(void) {
     }
 
     // ─────────── Drawing UI ─────────────
-    GuiLoadStyleDefault();
+    // GuiLoadStyleDefault();
     BeginDrawing();
-    ClearBackground(DARKGRAY);
+    ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
-    // Top bar
+    // ==== Top bar ====
     if (GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG")) || IsKeyPressed(KEY_S)) showTextInputBox = true;
 
     if (GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT")) || IsKeyPressed(KEY_B)) showTextInputBox2 = true;
@@ -161,15 +168,20 @@ int main(void) {
     if (GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT")) || IsKeyPressed(KEY_L)) showTextInputBox3 = true;
     
     if (GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas")) || IsKeyPressed(KEY_N)) NewCanvas();
+    
+    // Light / Dark Slider
+    GuiSetStyle(SLIDER, SLIDER_PADDING, 2);
+    GuiToggleSlider((Rectangle){ 450, 5, 60, 30 }, "#142#;#142#", &toggleThemeSliderActive);
+    GuiSetStyle(SLIDER, SLIDER_PADDING, 0);
 
     // Grid
     for (int y = 0; y < GRID_SIZE; y++) {
       for (int x = 0; x < GRID_SIZE; x++) {
-        Color col = (canvas[y][x].a == 0) ? DARKGRAY : canvas[y][x];
+        Color col = (canvas[y][x].a == 0) ? GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)) : canvas[y][x];
         DrawRectangle(gridOriginX + x * PIXEL_SIZE, gridOriginY + y * PIXEL_SIZE, PIXEL_SIZE,
                       PIXEL_SIZE, col);
         DrawRectangleLines(gridOriginX + x * PIXEL_SIZE, gridOriginY + y * PIXEL_SIZE, PIXEL_SIZE,
-                           PIXEL_SIZE, GRAY);
+                           PIXEL_SIZE, GetColor(GuiGetStyle(DEFAULT, LINE_COLOR)));
       }
     }
 
@@ -213,6 +225,12 @@ int main(void) {
                (Vector2){10, screenHeight - BOTTOM_BAR_HEIGHT + 8}, uiFont.baseSize * 0.26f, 1,
                BLACK);
 
+    // Switch Light / Dark
+    if (toggleThemeSliderActive != prevToggleThemeSliderActive)
+    {
+      if (toggleThemeSliderActive) GuiLoadStyleDark(); else GuiLoadStyleDefault();
+      prevToggleThemeSliderActive = toggleThemeSliderActive;
+    }
     EndDrawing();
   }
 
