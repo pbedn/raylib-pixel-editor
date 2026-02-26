@@ -1,11 +1,22 @@
+# ClangD
+.cache/
+compile_commands.json
+build_clang/
+
+# IDE setup
+*.sublime-project
+*.sublime-workspace
+compile_commands.json
+
+# sublime
+*.sublime-*
+
+# game files
+build/
+test_runner
 *.exe
 *.o
 *.png
 *.bin
 !docs/*.png
 playground/
-
-# IDE setup
-*.sublime-project
-*.sublime-workspace
-compile_commands.json

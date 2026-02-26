@@ -1,10 +1,19 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "raylib.h"
 
 #define RAYGUI_IMPLEMENTATION  // Define this in one source file
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
+#endif
 #include "raygui.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "../styles/style_dark.h"              // raygui style: dark
 
@@ -31,8 +40,10 @@ typedef struct {
   char name[MAX_PALETTE_NAME];  // Name of the palette
 } Palette;
 
-// Directory name for user output
-const char *libraryDir = "library";
+// Runtime paths (local repo by default, overridden for installed runs)
+static char libraryDir[512] = "library";
+static char fontPath[512] = "fonts/PressStart2P-Regular.ttf";
+static char palettesDir[512] = "palettes";
 
 // Global variables for palettes and UI state
 Palette palettes[MAX_PALETTES];  // Array of palettes
@@ -68,6 +79,7 @@ static void btnSaveText(const char *filename);
 static void btnLoadText(const char *filename);
 static void parseLine(const char *line, int rowIndex);
 static void NewCanvas();
+static void InitRuntimePaths(void);
 
 void LoadPalettesFromDir(const char *dirPath);
 void DropdownBufferString();
@@ -83,10 +95,12 @@ int main(void) {
   InitWindow(screenWidth, screenHeight, "Raylib Pixel Editor");
   SetTargetFPS(60);
 
-  Font uiFont = LoadFont("fonts/PressStart2P-Regular.ttf");
+  InitRuntimePaths();
+
+  Font uiFont = LoadFont(fontPath);
 
   // Load palettes from directory
-  LoadPalettesFromDir("palettes");
+  LoadPalettesFromDir(palettesDir);
   if (paletteCount == 0) {
     TraceLog(LOG_WARNING, "No palettes found.");
     CloseWindow();
@@ -272,8 +286,8 @@ static void btnSaveAsPNG(const char * textInput) {
   Image image = GenImageColor(GRID_SIZE, GRID_SIZE, BLANK);
   for (int y = 0; y < GRID_SIZE; y++)
     for (int x = 0; x < GRID_SIZE; x++) ImageDrawPixel(&image, x, y, canvas[y][x]);
-  char filename[256];
-  sprintf(filename, "%s/%s.png", libraryDir, textInput);
+  char filename[1024];
+  snprintf(filename, sizeof(filename), "%s/%s.png", libraryDir, textInput);
   ExportImage(image, filename);
   UnloadImage(image);
 }
@@ -304,8 +318,8 @@ static void btnSaveText(const char *filename) {
     }
 
     // Save the text data to a file
-    char newFilename[256];
-    sprintf(newFilename, "%s/%s.bin", libraryDir, filename);
+    char newFilename[1024];
+    snprintf(newFilename, sizeof(newFilename), "%s/%s.bin", libraryDir, filename);
     if (!SaveFileText(newFilename, textBuffer)) {
         TraceLog(LOG_ERROR, "Error saving file.\n");
     }
@@ -315,8 +329,8 @@ static void btnSaveText(const char *filename) {
 
 static void btnLoadText(const char *filename) {
     // Load the text data from the file
-    char newFilename[256];
-    sprintf(newFilename, "%s/%s.bin", libraryDir, filename);
+    char newFilename[1024];
+    snprintf(newFilename, sizeof(newFilename), "%s/%s.bin", libraryDir, filename);
     char *textData = LoadFileText(newFilename);
     if (textData == NULL) {
         TraceLog(LOG_ERROR, "Could not load file: %s", filename);
@@ -383,12 +397,46 @@ static void parseLine(const char *line, int rowIndex) {
     }
 }
 
+static void InitRuntimePaths(void) {
+  // Development mode defaults (run from repository root)
+  TextCopy(fontPath, "fonts/PressStart2P-Regular.ttf");
+  TextCopy(palettesDir, "palettes");
+  TextCopy(libraryDir, "library");
+
+  if (FileExists(fontPath) && DirectoryExists(palettesDir)) {
+    return;
+  }
+
+  // Installed layout fallback: /usr/bin/pixel -> /usr/share/pixel/{fonts,palettes}
+  const char *appDir = GetApplicationDirectory();
+  if (appDir && appDir[0] != '\0') {
+    char shareDir[512] = {0};
+    snprintf(shareDir, sizeof(shareDir), "%s../share/pixel", appDir);
+    snprintf(fontPath, sizeof(fontPath), "%s/fonts/PressStart2P-Regular.ttf", shareDir);
+    snprintf(palettesDir, sizeof(palettesDir), "%s/palettes", shareDir);
+  }
+
+  // Save user files in a writable per-user location on Unix-like systems.
+  const char *home = getenv("HOME");
+  if (home && home[0] != '\0') {
+    char path[512] = {0};
+    snprintf(path, sizeof(path), "%s/.local", home);
+    MakeDirectory(path);
+    snprintf(path, sizeof(path), "%s/.local/share", home);
+    MakeDirectory(path);
+    snprintf(path, sizeof(path), "%s/.local/share/pixel", home);
+    MakeDirectory(path);
+    snprintf(libraryDir, sizeof(libraryDir), "%s/.local/share/pixel/library", home);
+    MakeDirectory(libraryDir);
+  }
+}
+
 //------------------------------------------------------------------------------------
 // Helper Functions Definitions
 //------------------------------------------------------------------------------------
 void LoadPalettesFromDir(const char *dirPath) {
   FilePathList files = LoadDirectoryFiles(dirPath);
-  for (int i = 0; i < files.count && paletteCount < MAX_PALETTES; i++) {
+  for (unsigned int i = 0; i < files.count && paletteCount < MAX_PALETTES; i++) {
     if (!IsPathFile(files.paths[i])) continue;
 
     FILE *fp = fopen(files.paths[i], "r");
@@ -415,7 +463,7 @@ void LoadPalettesFromDir(const char *dirPath) {
 }
 
 void DropdownBufferString() {
-  int currentLength = strlen(dropdownBuffer);  // Start with the current length (initially 0)
+  size_t currentLength = strlen(dropdownBuffer);  // Start with the current length (initially 0)
 
   for (int i = 0; i < paletteCount; i++) {
     // Format the new item
@@ -424,10 +472,10 @@ void DropdownBufferString() {
              palettes[i].name);  // Create the item string
 
     // Calculate the length of the new item
-    int itemLength = strlen(item);
+    size_t itemLength = strlen(item);
 
     // Check if adding this item would exceed the buffer size
-    if (currentLength + itemLength + (i > 0 ? 1 : 0) < sizeof(dropdownBuffer)) {
+    if (currentLength + itemLength + (size_t)(i > 0 ? 1 : 0) < sizeof(dropdownBuffer)) {
       if (i > 0) {
         strncat(dropdownBuffer, ";",
                 sizeof(dropdownBuffer) - currentLength - 1);  // Add separator

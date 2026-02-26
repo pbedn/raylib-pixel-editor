@@ -1,38 +1,87 @@
-# Makefile
+CC ?= gcc
+CFLAGS ?= -Wall -Wextra -std=c11 -O2
+CFLAGS += -D_POSIX_C_SOURCE=200809L
+INCLUDES := -Iinclude
+LDFLAGS := -Llib
+LDLIBS := -lraylib -lm -ldl -lpthread -lGL -lrt -lX11
 
-# Compiler
-CC = gcc
+BUILD_DIR := build
+SRC := pixel-editor.c
+TARGET := $(BUILD_DIR)/pixel
+REPO ?= $(CURDIR)
 
-# Compiler flags
-CFLAGS = -Wall -Wextra -g -Iinclude
+TEST_SRC := tests/test_pixel-editor.c
+TEST_TARGET := $(BUILD_DIR)/test_pixel-editor
 
-# Linker flags
-LDFLAGS = -LC:/raylib/w64devkit/x86_64-w64-mingw32/lib -lraylib -lgdi32 -lwinmm
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+DATADIR ?= $(PREFIX)/share
+DESKTOPDIR ?= $(DATADIR)/applications
+ICONDIR ?= $(DATADIR)/pixmaps
+ICON_SRC ?= docs/v0.2.png
+APP_ID ?= pixel
+APP_SHAREDIR ?= $(DATADIR)/pixel
+FONTDIR ?= $(APP_SHAREDIR)/fonts
+PALETTEDIR ?= $(APP_SHAREDIR)/palettes
+FONTS := fonts/PressStart2P-Regular.ttf
+PALETTES := palettes/*.txt
 
-# Source files
-SRCS = $(wildcard *.c)
+.PHONY: all run test install uninstall uninstall-all purge-user-data install-desktop uninstall-desktop clean
 
-# Object files
-OBJS = $(SRCS:.c=.o)
+all: $(TARGET)
 
-# Executable names (one for each source file)
-TARGETS = $(SRCS:.c=.exe)
+$(BUILD_DIR):
+	mkdir -p "$@"
 
-# Default target
-all: $(TARGETS)
+$(TARGET): $(SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS) $(LDLIBS)
 
-# Link object files to create the executables
-%.exe: %.o
-	$(CC) $< -o $@ $(LDFLAGS)
-
-# Compile source files to object files
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Clean up
-clean:
-	rm -f $(OBJS) $(TARGETS)
-
-# Run the program
 run: $(TARGET)
-	IF EXIST $(TARGET).exe $(TARGET).exe
+	cd "$(REPO)" && ./$(TARGET)
+
+$(TEST_TARGET): $(TEST_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS) $(LDLIBS)
+
+test: $(TEST_TARGET)
+	./$(TEST_TARGET)
+
+install: $(TARGET) install-desktop
+	install -d "$(DESTDIR)$(BINDIR)"
+	install -m 755 "$(TARGET)" "$(DESTDIR)$(BINDIR)/pixel"
+
+uninstall: uninstall-desktop
+	rm -f "$(DESTDIR)$(BINDIR)/pixel"
+
+uninstall-all: uninstall purge-user-data
+
+purge-user-data:
+	rm -rf "$${HOME}/.local/share/pixel"
+
+install-desktop:
+	install -d "$(DESTDIR)$(FONTDIR)"
+	install -m 644 $(FONTS) "$(DESTDIR)$(FONTDIR)"
+	install -d "$(DESTDIR)$(PALETTEDIR)"
+	install -m 644 $(PALETTES) "$(DESTDIR)$(PALETTEDIR)"
+	install -d "$(DESTDIR)$(ICONDIR)"
+	install -m 644 "$(ICON_SRC)" "$(DESTDIR)$(ICONDIR)/$(APP_ID).png"
+	install -d "$(DESTDIR)$(DESKTOPDIR)"
+	printf '%s\n' \
+		'[Desktop Entry]' \
+		'Type=Application' \
+		'Name=pixel' \
+		'Comment=Local Pixel Editor' \
+		'Exec=$(BINDIR)/pixel' \
+		'Icon=$(ICONDIR)/$(APP_ID).png' \
+		'Path=$(APP_SHAREDIR)' \
+		'Terminal=false' \
+		'Categories=Development;Utility;' \
+	> "$(DESTDIR)$(DESKTOPDIR)/$(APP_ID).desktop"
+
+uninstall-desktop:
+	rm -f "$(DESTDIR)$(DESKTOPDIR)/$(APP_ID).desktop"
+	rm -f "$(DESTDIR)$(ICONDIR)/$(APP_ID).png"
+	rm -f "$(DESTDIR)$(ICONDIR)/$(APP_ID).jpg"
+	rm -rf "$(DESTDIR)$(APP_SHAREDIR)"
+
+clean:
+	rm -f "$(TARGET)" "$(TEST_TARGET)"
