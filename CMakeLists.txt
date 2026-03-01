@@ -7,9 +7,14 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
-add_executable(pixel pixel-editor.c)
+add_executable(
+  pixel
+  src/pixel-editor.c
+  src/pixel_core.c
+  src/pixel_ui_logic.c
+)
 
-target_include_directories(pixel PRIVATE "${CMAKE_SOURCE_DIR}/include")
+target_include_directories(pixel PRIVATE "${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/src")
 target_compile_definitions(pixel PRIVATE _POSIX_C_SOURCE=200809L)
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")

@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 #include "raylib.h"
+#include "pixel_core.h"
+#include "pixel_ui_logic.h"
 
 #define RAYGUI_IMPLEMENTATION  // Define this in one source file
 #if defined(__GNUC__)
@@ -50,13 +51,8 @@ static char palettesDir[512] = "palettes";
 Palette palettes[MAX_PALETTES];  // Array of palettes
 int paletteCount = 0;            // Current number of loaded palettes
 int currentPaletteIndex = 6;     // Index of the currently selected palette
-int dropdownActive = 0;          // State of the dropdown menu
-bool showTextInputBox = false;
-bool showTextInputBox2 = false;
-bool showTextInputBox3 = false;
+PixelUiLogic uiState = {0};
 char textInput[256] = { 0 };
-char textBoxText[64] = "filename";
-bool textBoxEditMode = false;
 
 // Rectangle for dropdown menu bounds
 Rectangle dropdownBounds;
@@ -78,9 +74,7 @@ void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const c
 static void btnSaveAsPNG(const char *);
 static void btnSaveText(const char *filename);
 static void btnLoadText(const char *filename);
-static void parseLine(char *line);
 static void NewCanvas();
-static void PaintBrush(int gx, int gy, Color color, int brushSize);
 static void InitRuntimePaths(void);
 static void InitUserLibraryDir(void);
 
@@ -128,6 +122,7 @@ int main(void) {
 
   // Initialize the canvas with blank colors
   NewCanvas();
+  PixelUiLogicInit(&uiState);
 
   // Create a string for the dropdown containing palette names
   DropdownBufferString();
@@ -137,17 +132,13 @@ int main(void) {
   int toggleThemeSliderActive = 0;
   int prevToggleThemeSliderActive = 1;
   int brushSize = 1;
-  bool showQuitConfirm = false;
-  bool shouldQuit = false;
 
   while (!WindowShouldClose()) {
     if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) {
-      showQuitConfirm = true;
-      showTextInputBox = false;
-      showTextInputBox2 = false;
-      showTextInputBox3 = false;
-      textBoxEditMode = false;
+      PixelUiLogicOpenQuitConfirm(&uiState);
     }
+
+    dropdownBounds = (Rectangle){gridOriginX + GRID_SIZE * PIXEL_SIZE + MARGIN, 5, PALLETE_SIZE * 2 + MARGIN, 30};
 
     // Handle mouse
     Vector2 mouse = GetMousePosition();
@@ -160,13 +151,13 @@ int main(void) {
     if (brushSize > GRID_SIZE) brushSize = GRID_SIZE;
 
     // ─────────── Logic ─────────────
-    if (!showQuitConfirm && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+    if (!uiState.showQuitConfirm && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
       if (CheckCollisionPointRec(mouse, dropdownBounds)) {
         selectedPaletteIndex = !selectedPaletteIndex;  // Toggle dropdown
 
         // Set the canvas color at the calculated grid position
-      } else if (CheckCollisionPointRec(mouse, gridBounds) && !showTextInputBox && !showTextInputBox2 && !showTextInputBox3) {
-        PaintBrush(gx, gy, currentColor, brushSize);
+      } else if (CheckCollisionPointRec(mouse, gridBounds) && !uiState.showSavePngDialog && !uiState.showSaveTxtDialog && !uiState.showLoadTxtDialog) {
+        PixelPaintBrush(&canvas[0][0], GRID_SIZE, gx, gy, currentColor, brushSize);
 
         // Set the palette color at the calculated palette position
       } else {
@@ -189,9 +180,9 @@ int main(void) {
           }
         }
       }
-    } else if (!showQuitConfirm && IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && !GuiIsLocked()) {
+    } else if (!uiState.showQuitConfirm && IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && !GuiIsLocked()) {
       // Clear pixel on right-click if within bounds
-      if (CheckCollisionPointRec(mouse, gridBounds)) PaintBrush(gx, gy, BLANK, brushSize);
+      if (CheckCollisionPointRec(mouse, gridBounds)) PixelPaintBrush(&canvas[0][0], GRID_SIZE, gx, gy, BLANK, brushSize);
     }
 
     // ─────────── Drawing UI ─────────────
@@ -200,28 +191,19 @@ int main(void) {
     ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
     // ==== Top bar ====
-    if (!showQuitConfirm && GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG"))) {
-      showTextInputBox = true;
-      showTextInputBox2 = false;
-      showTextInputBox3 = false;
-      textBoxEditMode = true;
+    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG"))) {
+      PixelUiLogicOpenDialog(&uiState, PIXEL_DIALOG_SAVE_PNG);
     }
 
-    if (!showQuitConfirm && GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT"))) {
-      showTextInputBox = false;
-      showTextInputBox2 = true;
-      showTextInputBox3 = false;
-      textBoxEditMode = true;
+    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT"))) {
+      PixelUiLogicOpenDialog(&uiState, PIXEL_DIALOG_SAVE_TXT);
     }
 
-    if (!showQuitConfirm && GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT"))) {
-      showTextInputBox = false;
-      showTextInputBox2 = false;
-      showTextInputBox3 = true;
-      textBoxEditMode = true;
+    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT"))) {
+      PixelUiLogicOpenDialog(&uiState, PIXEL_DIALOG_LOAD_TXT);
     }
 
-    if (!showQuitConfirm && GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas"))) NewCanvas();
+    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas"))) NewCanvas();
 
     // Light / Dark Slider
     GuiSetStyle(SLIDER, SLIDER_PADDING, 2);
@@ -260,7 +242,7 @@ int main(void) {
     }
 
     // Draw dropdown for palette selection using Raygui
-    if (!showQuitConfirm && GuiDropdownBox((Rectangle){paletteX, 5, PALLETE_SIZE * 2 + MARGIN, 30}, dropdownBuffer,
+    if (!uiState.showQuitConfirm && GuiDropdownBox(dropdownBounds, dropdownBuffer,
                        &selectedPaletteIndex, dropdownActive)) {
       dropdownActive = !dropdownActive;                        // Toggle dropdown state
       currentPaletteIndex = selectedPaletteIndex;              // Update the current palette index
@@ -268,12 +250,12 @@ int main(void) {
                                                                // color of the selected palette
     }
 
-    if (!showQuitConfirm && showTextInputBox) {
-        ShowTextInputBox(&showTextInputBox, "Save file as PNG", btnSaveAsPNG);
-    } else if (!showQuitConfirm && showTextInputBox2) {
-        ShowTextInputBox(&showTextInputBox2, "Save file as TXT", btnSaveText);
-    } else if (!showQuitConfirm && showTextInputBox3) {
-        ShowTextInputBox(&showTextInputBox3, "Load TXT file", btnLoadText);
+    if (!uiState.showQuitConfirm && uiState.showSavePngDialog) {
+        ShowTextInputBox(&uiState.showSavePngDialog, "Save file as PNG", btnSaveAsPNG);
+    } else if (!uiState.showQuitConfirm && uiState.showSaveTxtDialog) {
+        ShowTextInputBox(&uiState.showSaveTxtDialog, "Save file as TXT", btnSaveText);
+    } else if (!uiState.showQuitConfirm && uiState.showLoadTxtDialog) {
+        ShowTextInputBox(&uiState.showLoadTxtDialog, "Load TXT file", btnLoadText);
     }
 
     // Bottom status bar
@@ -296,25 +278,25 @@ int main(void) {
       prevToggleThemeSliderActive = toggleThemeSliderActive;
     }
 
-    if (showQuitConfirm) {
+    if (uiState.showQuitConfirm) {
       DrawRectangle(0, 0, screenWidth, screenHeight, Fade(DARKGRAY, 0.8f));
       Rectangle bounds = { (float)screenWidth/2 - 140, (float)screenHeight/2 - 70, 280, 140 };
       Rectangle yesBounds = { bounds.x + 16, bounds.y + bounds.height - 38, (bounds.width - 48)/2, 24 };
       Rectangle noBounds = { yesBounds.x + yesBounds.width + 16, yesBounds.y, yesBounds.width, 24 };
 
-      if (GuiWindowBox(bounds, "#119#Confirm Quit")) showQuitConfirm = false;
+      if (GuiWindowBox(bounds, "#119#Confirm Quit")) PixelUiLogicCancelQuit(&uiState);
       GuiLabel((Rectangle){ bounds.x + 16, bounds.y + 48, bounds.width - 32, 20 }, "Quit pixel editor?");
 
       if (GuiButton(yesBounds, "Yes") || IsKeyPressed(KEY_ENTER)) {
-        shouldQuit = true;
+        PixelUiLogicAcceptQuit(&uiState);
       }
       if (GuiButton(noBounds, "No") || IsKeyPressed(KEY_ESCAPE)) {
-        showQuitConfirm = false;
+        PixelUiLogicCancelQuit(&uiState);
       }
     }
 
     EndDrawing();
-    if (shouldQuit) break;
+    if (uiState.shouldQuit) break;
   }
 
   UnloadFont(uiFont);
@@ -325,6 +307,8 @@ int main(void) {
 //------------------------------------------------------------------------------------
 // Controls Functions Definitions
 //------------------------------------------------------------------------------------
+// Render filename modal and dispatch callback on confirm.
+// Side effects: mutates UI dialog state and input buffer.
 void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const char *)) {
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(DARKGRAY, 0.8f));
     Rectangle bounds = { (float)GetScreenWidth()/2 - 120, (float)GetScreenHeight()/2 - 60, 240, 140 };
@@ -334,80 +318,58 @@ void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const c
 
     if (GuiWindowBox(bounds, GuiIconText(ICON_FILE_SAVE, title))) {
         *showBox = false;
-        textBoxEditMode = false;
+        uiState.textInputEditMode = false;
         TextCopy(textInput, "\0");
         return;
     }
 
     GuiLabel((Rectangle){ bounds.x + 12, bounds.y + 32, bounds.width - 24, 20 }, "Specify file name:");
-    if (GuiTextBox(textBoxBounds, textInput, 255, textBoxEditMode)) textBoxEditMode = !textBoxEditMode;
+    if (GuiTextBox(textBoxBounds, textInput, 255, uiState.textInputEditMode)) uiState.textInputEditMode = !uiState.textInputEditMode;
 
     if (GuiButton(okBounds, "Ok") || IsKeyPressed(KEY_ENTER)) {
         callback(textInput);
         *showBox = false;
-        textBoxEditMode = false;
+        uiState.textInputEditMode = false;
         TextCopy(textInput, "\0");
         return;
     }
 
     if (GuiButton(cancelBounds, "Cancel") || IsKeyPressed(KEY_ESCAPE)) {
         *showBox = false;
-        textBoxEditMode = false;
+        uiState.textInputEditMode = false;
         TextCopy(textInput, "\0");
     }
 }
 
+// Export current canvas to PNG and keep matching project text file.
 static void btnSaveAsPNG(const char * textInput) {
+  char pngPath[1024];
+  if (!PixelBuildFilePath(libraryDir, textInput, ".png", pngPath, sizeof(pngPath))) return;
+
   Image image = GenImageColor(GRID_SIZE, GRID_SIZE, BLANK);
   for (int y = 0; y < GRID_SIZE; y++)
     for (int x = 0; x < GRID_SIZE; x++) ImageDrawPixel(&image, x, y, canvas[y][x]);
-  char filename[1024];
-  snprintf(filename, sizeof(filename), "%s/%s.png", libraryDir, textInput);
-  ExportImage(image, filename);
+  ExportImage(image, pngPath);
   UnloadImage(image);
 
   // Keep a loadable project snapshot alongside every PNG export.
   btnSaveText(textInput);
 }
 
+// Save current canvas in reloadable text format.
 static void btnSaveText(const char *filename) {
-    char baseName[256] = {0};
-    if (sscanf(filename, "%255[^.]", baseName) != 1) return;
-
     char newFilename[1024];
-    snprintf(newFilename, sizeof(newFilename), "%s/%s.txt", libraryDir, baseName);
-
-    FILE *fp = fopen(newFilename, "w");
-    if (!fp) {
-      TraceLog(LOG_ERROR, "Error opening file for save: %s", newFilename);
-      return;
-    }
-
-    fprintf(fp, "Canvas Data (GRID_SIZE: %d)\n", GRID_SIZE);
-    fprintf(fp, "# Format: r,g,b,a\n\n");
-
-    for (int y = 0; y < GRID_SIZE; y++) {
-      fprintf(fp, "Row %03d: ", y);
-      for (int x = 0; x < GRID_SIZE; x++) {
-        fprintf(fp, "%03d,%03d,%03d,%03d", canvas[y][x].r, canvas[y][x].g, canvas[y][x].b, canvas[y][x].a);
-        if (x < GRID_SIZE - 1) fprintf(fp, " | ");
-      }
-      fputc('\n', fp);
-    }
-
-    if (fclose(fp) != 0) {
-      TraceLog(LOG_ERROR, "Error writing file: %s", newFilename);
+    if (!PixelBuildFilePath(libraryDir, filename, ".txt", newFilename, sizeof(newFilename))) return;
+    if (!PixelSaveCanvasText(newFilename, &canvas[0][0], GRID_SIZE)) {
+      TraceLog(LOG_ERROR, "Error saving file: %s", newFilename);
     }
 }
 
+// Load canvas from text project format.
 static void btnLoadText(const char *filename) {
-    char baseName[256] = {0};
-    if (sscanf(filename, "%255[^.]", baseName) != 1) return;
-
     char newFilename[1024];
-    snprintf(newFilename, sizeof(newFilename), "%s/%s.txt", libraryDir, baseName);
-    char *textData = LoadFileText(newFilename);
-    if (textData == NULL) {
+    if (!PixelBuildFilePath(libraryDir, filename, ".txt", newFilename, sizeof(newFilename))) return;
+    if (!FileExists(newFilename)) {
         TraceLog(LOG_ERROR, "Could not load file: %s", filename);
         return;
     }
@@ -415,29 +377,12 @@ static void btnLoadText(const char *filename) {
     // Reset the canvas to transparent values
     NewCanvas();
 
-    // Parse the text data
-    char *lineStart = textData;
-
-    while (*lineStart != '\0') {
-        // Find the end of the line
-        char *lineEnd = strchr(lineStart, '\n');
-        if (lineEnd == NULL) lineEnd = lineStart + strlen(lineStart); // Handle last line
-
-        // Null-terminate the line
-        char temp = *lineEnd;
-        *lineEnd = '\0';
-
-        parseLine(lineStart);
-
-        // Restore the original character
-        *lineEnd = temp;
-
-        // Move to the next line
-        lineStart = (*lineEnd == '\n') ? lineEnd + 1 : lineEnd; // Skip \n
+    if (!PixelLoadCanvasText(newFilename, &canvas[0][0], GRID_SIZE)) {
+      TraceLog(LOG_ERROR, "Could not parse file: %s", newFilename);
     }
-    UnloadFileText(textData);
 }
 
+// Reset all canvas cells to transparent.
 static void NewCanvas() {
   for (int y = 0; y < GRID_SIZE; y++) {
       for (int x = 0; x < GRID_SIZE; x++)
@@ -445,49 +390,7 @@ static void NewCanvas() {
   }
 }
 
-static void PaintBrush(int gx, int gy, Color color, int brushSize) {
-  int startX = gx - brushSize / 2;
-  int startY = gy - brushSize / 2;
-
-  for (int y = 0; y < brushSize; y++) {
-    for (int x = 0; x < brushSize; x++) {
-      int px = startX + x;
-      int py = startY + y;
-      if (px < 0 || px >= GRID_SIZE || py < 0 || py >= GRID_SIZE) continue;
-      canvas[py][px] = color;
-    }
-  }
-}
-
-static void parseLine(char *line) {
-    int rowIndex = -1;
-    if (sscanf(line, "Row %d:", &rowIndex) != 1) return;
-    if (rowIndex < 0 || rowIndex >= GRID_SIZE) {
-        TraceLog(LOG_WARNING, "Skipping out-of-range row index: %d", rowIndex);
-        return;
-    }
-
-    char *dataPart = strchr(line, ':');
-    if (dataPart == NULL) return;
-    dataPart++;
-    while (*dataPart != '\0' && isspace((unsigned char)*dataPart)) dataPart++;
-
-    char *colorToken = strtok(dataPart, "|");
-    for (int x = 0; x < GRID_SIZE && colorToken != NULL; x++) {
-        while (*colorToken != '\0' && isspace((unsigned char)*colorToken)) colorToken++;
-
-        int r, g, b, a;
-        if (sscanf(colorToken, "%3d,%3d,%3d,%3d", &r, &g, &b, &a) == 4 &&
-            r >= 0 && r <= 255 && g >= 0 && g <= 255 &&
-            b >= 0 && b <= 255 && a >= 0 && a <= 255) {
-            canvas[rowIndex][x] = (Color){(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a};
-        } else {
-            TraceLog(LOG_WARNING, "Error parsing color at row %d col %d: %s", rowIndex, x, colorToken);
-        }
-        colorToken = strtok(NULL, "|");
-    }
-}
-
+// Resolve runtime asset and user data paths for the active platform/layout.
 static void InitRuntimePaths(void) {
   // Development mode defaults (assets from repository root)
   TextCopy(fontPath, "fonts/PressStart2P-Regular.ttf");
@@ -507,6 +410,7 @@ static void InitRuntimePaths(void) {
   InitUserLibraryDir();
 }
 
+// Initialize user-writable library directory on Linux/Windows with fallbacks.
 static void InitUserLibraryDir(void) {
 #if defined(_WIN32)
   const char *base = getenv("LOCALAPPDATA");
@@ -554,6 +458,7 @@ static void InitUserLibraryDir(void) {
 //------------------------------------------------------------------------------------
 // Helper Functions Definitions
 //------------------------------------------------------------------------------------
+// Load palette files from directory into in-memory palette list.
 void LoadPalettesFromDir(const char *dirPath) {
   FilePathList files = LoadDirectoryFiles(dirPath);
   for (unsigned int i = 0; i < files.count && paletteCount < MAX_PALETTES; i++) {
@@ -582,6 +487,7 @@ void LoadPalettesFromDir(const char *dirPath) {
   UnloadDirectoryFiles(files);
 }
 
+// Build semicolon-separated palette list expected by raygui dropdown.
 void DropdownBufferString() {
   size_t currentLength = strlen(dropdownBuffer);  // Start with the current length (initially 0)
 

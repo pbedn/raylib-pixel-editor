@@ -1,16 +1,17 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -std=c11 -O2
 CFLAGS += -D_POSIX_C_SOURCE=200809L
-INCLUDES := -Iinclude
+INCLUDES := -Iinclude -Isrc
 LDFLAGS := -Llib
 LDLIBS := -lraylib -lm -ldl -lpthread -lGL -lrt -lX11
 
 BUILD_DIR := build
-SRC := pixel-editor.c
+SRC := src/pixel-editor.c
 TARGET := $(BUILD_DIR)/pixel
 REPO ?= $(CURDIR)
 
-TEST_SRC := tests/test_pixel-editor.c
+CORE_SRC := src/pixel_core.c src/pixel_ui_logic.c
+TEST_SRC := tests/test_pixel_core.c
 TEST_TARGET := $(BUILD_DIR)/test_pixel-editor
 
 PREFIX ?= /usr/local
@@ -33,14 +34,14 @@ all: $(TARGET)
 $(BUILD_DIR):
 	mkdir -p "$@"
 
-$(TARGET): $(SRC) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS) $(LDLIBS)
+$(TARGET): $(SRC) $(CORE_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) $(SRC) $(CORE_SRC) -o $@ $(LDFLAGS) $(LDLIBS)
 
 run: $(TARGET)
 	cd "$(REPO)" && ./$(TARGET)
 
-$(TEST_TARGET): $(TEST_SRC) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS) $(LDLIBS)
+$(TEST_TARGET): $(TEST_SRC) $(CORE_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) $(TEST_SRC) $(CORE_SRC) -o $@ $(LDFLAGS) $(LDLIBS)
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
