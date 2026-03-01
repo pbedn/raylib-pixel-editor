@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "raylib.h"
 
@@ -77,7 +78,7 @@ void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const c
 static void btnSaveAsPNG(const char *);
 static void btnSaveText(const char *filename);
 static void btnLoadText(const char *filename);
-static void parseLine(const char *line, int rowIndex);
+static void parseLine(char *line);
 static void NewCanvas();
 static void PaintBrush(int gx, int gy, Color color, int brushSize);
 static void InitRuntimePaths(void);
@@ -95,6 +96,7 @@ int main(void) {
   const int screenHeight = gridPixels + TOP_BAR_HEIGHT + BOTTOM_BAR_HEIGHT + 2 * MARGIN;
 
   InitWindow(screenWidth, screenHeight, "Raylib Pixel Editor");
+  SetExitKey(KEY_NULL);
   SetTargetFPS(60);
 
   InitRuntimePaths();
@@ -135,8 +137,18 @@ int main(void) {
   int toggleThemeSliderActive = 0;
   int prevToggleThemeSliderActive = 1;
   int brushSize = 1;
+  bool showQuitConfirm = false;
+  bool shouldQuit = false;
 
   while (!WindowShouldClose()) {
+    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) {
+      showQuitConfirm = true;
+      showTextInputBox = false;
+      showTextInputBox2 = false;
+      showTextInputBox3 = false;
+      textBoxEditMode = false;
+    }
+
     // Handle mouse
     Vector2 mouse = GetMousePosition();
     int gx = (mouse.x - gridOriginX) / PIXEL_SIZE;
@@ -148,7 +160,7 @@ int main(void) {
     if (brushSize > GRID_SIZE) brushSize = GRID_SIZE;
 
     // ─────────── Logic ─────────────
-    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+    if (!showQuitConfirm && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
       if (CheckCollisionPointRec(mouse, dropdownBounds)) {
         selectedPaletteIndex = !selectedPaletteIndex;  // Toggle dropdown
 
@@ -177,7 +189,7 @@ int main(void) {
           }
         }
       }
-    } else if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && !GuiIsLocked()) {
+    } else if (!showQuitConfirm && IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && !GuiIsLocked()) {
       // Clear pixel on right-click if within bounds
       if (CheckCollisionPointRec(mouse, gridBounds)) PaintBrush(gx, gy, BLANK, brushSize);
     }
@@ -188,13 +200,28 @@ int main(void) {
     ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
     // ==== Top bar ====
-    if (GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG")) || IsKeyPressed(KEY_S)) showTextInputBox = true;
+    if (!showQuitConfirm && GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG"))) {
+      showTextInputBox = true;
+      showTextInputBox2 = false;
+      showTextInputBox3 = false;
+      textBoxEditMode = true;
+    }
 
-    if (GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT")) || IsKeyPressed(KEY_B)) showTextInputBox2 = true;
+    if (!showQuitConfirm && GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT"))) {
+      showTextInputBox = false;
+      showTextInputBox2 = true;
+      showTextInputBox3 = false;
+      textBoxEditMode = true;
+    }
 
-    if (GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT")) || IsKeyPressed(KEY_L)) showTextInputBox3 = true;
+    if (!showQuitConfirm && GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT"))) {
+      showTextInputBox = false;
+      showTextInputBox2 = false;
+      showTextInputBox3 = true;
+      textBoxEditMode = true;
+    }
 
-    if (GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas")) || IsKeyPressed(KEY_N)) NewCanvas();
+    if (!showQuitConfirm && GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas"))) NewCanvas();
 
     // Light / Dark Slider
     GuiSetStyle(SLIDER, SLIDER_PADDING, 2);
@@ -233,7 +260,7 @@ int main(void) {
     }
 
     // Draw dropdown for palette selection using Raygui
-    if (GuiDropdownBox((Rectangle){paletteX, 5, PALLETE_SIZE * 2 + MARGIN, 30}, dropdownBuffer,
+    if (!showQuitConfirm && GuiDropdownBox((Rectangle){paletteX, 5, PALLETE_SIZE * 2 + MARGIN, 30}, dropdownBuffer,
                        &selectedPaletteIndex, dropdownActive)) {
       dropdownActive = !dropdownActive;                        // Toggle dropdown state
       currentPaletteIndex = selectedPaletteIndex;              // Update the current palette index
@@ -241,11 +268,11 @@ int main(void) {
                                                                // color of the selected palette
     }
 
-    if (showTextInputBox) {
+    if (!showQuitConfirm && showTextInputBox) {
         ShowTextInputBox(&showTextInputBox, "Save file as PNG", btnSaveAsPNG);
-    } else if (showTextInputBox2) {
+    } else if (!showQuitConfirm && showTextInputBox2) {
         ShowTextInputBox(&showTextInputBox2, "Save file as TXT", btnSaveText);
-    } else if (showTextInputBox3) {
+    } else if (!showQuitConfirm && showTextInputBox3) {
         ShowTextInputBox(&showTextInputBox3, "Load TXT file", btnLoadText);
     }
 
@@ -256,6 +283,11 @@ int main(void) {
                           currentColor.r, currentColor.g, currentColor.b, brushSize),
                (Vector2){10, screenHeight - BOTTOM_BAR_HEIGHT + 8}, uiFont.baseSize * 0.26f, 1,
                BLACK);
+    const char *quitHint = "Quit: Ctrl+Q";
+    DrawTextEx(uiFont, quitHint,
+               (Vector2){screenWidth - MeasureTextEx(uiFont, quitHint, uiFont.baseSize * 0.26f, 1).x - 10,
+                         screenHeight - BOTTOM_BAR_HEIGHT + 8},
+               uiFont.baseSize * 0.26f, 1, DARKGRAY);
 
     // Switch Light / Dark
     if (toggleThemeSliderActive != prevToggleThemeSliderActive)
@@ -263,7 +295,26 @@ int main(void) {
       if (toggleThemeSliderActive) GuiLoadStyleDark(); else GuiLoadStyleDefault();
       prevToggleThemeSliderActive = toggleThemeSliderActive;
     }
+
+    if (showQuitConfirm) {
+      DrawRectangle(0, 0, screenWidth, screenHeight, Fade(DARKGRAY, 0.8f));
+      Rectangle bounds = { (float)screenWidth/2 - 140, (float)screenHeight/2 - 70, 280, 140 };
+      Rectangle yesBounds = { bounds.x + 16, bounds.y + bounds.height - 38, (bounds.width - 48)/2, 24 };
+      Rectangle noBounds = { yesBounds.x + yesBounds.width + 16, yesBounds.y, yesBounds.width, 24 };
+
+      if (GuiWindowBox(bounds, "#119#Confirm Quit")) showQuitConfirm = false;
+      GuiLabel((Rectangle){ bounds.x + 16, bounds.y + 48, bounds.width - 32, 20 }, "Quit pixel editor?");
+
+      if (GuiButton(yesBounds, "Yes") || IsKeyPressed(KEY_ENTER)) {
+        shouldQuit = true;
+      }
+      if (GuiButton(noBounds, "No") || IsKeyPressed(KEY_ESCAPE)) {
+        showQuitConfirm = false;
+      }
+    }
+
     EndDrawing();
+    if (shouldQuit) break;
   }
 
   UnloadFont(uiFont);
@@ -276,16 +327,32 @@ int main(void) {
 //------------------------------------------------------------------------------------
 void ShowTextInputBox(bool *showBox, const char *title, void (*callback)(const char *)) {
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(DARKGRAY, 0.8f));
-    int result = GuiTextInputBox(
-        (Rectangle){ (float)GetScreenWidth()/2 - 120, (float)GetScreenHeight()/2 - 60, 240, 140 },
-        GuiIconText(ICON_FILE_SAVE, title), "Specify file name:", "Ok;Cancel", textInput, 255, NULL);
+    Rectangle bounds = { (float)GetScreenWidth()/2 - 120, (float)GetScreenHeight()/2 - 60, 240, 140 };
+    Rectangle textBoxBounds = { bounds.x + 12, bounds.y + 56, bounds.width - 24, 26 };
+    Rectangle okBounds = { bounds.x + 12, bounds.y + bounds.height - 36, (bounds.width - 36)/2, 24 };
+    Rectangle cancelBounds = { okBounds.x + okBounds.width + 12, okBounds.y, okBounds.width, 24 };
 
-    if (result == 1) {
-        callback(textInput);
+    if (GuiWindowBox(bounds, GuiIconText(ICON_FILE_SAVE, title))) {
+        *showBox = false;
+        textBoxEditMode = false;
+        TextCopy(textInput, "\0");
+        return;
     }
 
-    if (result == 0 || result == 1 || result == 2) {
+    GuiLabel((Rectangle){ bounds.x + 12, bounds.y + 32, bounds.width - 24, 20 }, "Specify file name:");
+    if (GuiTextBox(textBoxBounds, textInput, 255, textBoxEditMode)) textBoxEditMode = !textBoxEditMode;
+
+    if (GuiButton(okBounds, "Ok") || IsKeyPressed(KEY_ENTER)) {
+        callback(textInput);
         *showBox = false;
+        textBoxEditMode = false;
+        TextCopy(textInput, "\0");
+        return;
+    }
+
+    if (GuiButton(cancelBounds, "Cancel") || IsKeyPressed(KEY_ESCAPE)) {
+        *showBox = false;
+        textBoxEditMode = false;
         TextCopy(textInput, "\0");
     }
 }
@@ -304,44 +371,41 @@ static void btnSaveAsPNG(const char * textInput) {
 }
 
 static void btnSaveText(const char *filename) {
-    // Create a buffer to hold the text data
-    char *textBuffer = (char *)malloc(GRID_SIZE * GRID_SIZE * 30); // Allocate enough space
-    if (textBuffer == NULL) {
-        TraceLog(LOG_ERROR, "Memory allocation failed.\n");
-        return;
+    char baseName[256] = {0};
+    if (sscanf(filename, "%255[^.]", baseName) != 1) return;
+
+    char newFilename[1024];
+    snprintf(newFilename, sizeof(newFilename), "%s/%s.txt", libraryDir, baseName);
+
+    FILE *fp = fopen(newFilename, "w");
+    if (!fp) {
+      TraceLog(LOG_ERROR, "Error opening file for save: %s", newFilename);
+      return;
     }
 
-    // Fill the buffer with canvas data
-    int offset = 0;
-    offset += sprintf(textBuffer + offset, "Canvas Data (GRID_SIZE: %d)\n", GRID_SIZE);
-    offset += sprintf(textBuffer + offset, "# Format: r,g,b,a\n\n"); // Add a comment about the format
+    fprintf(fp, "Canvas Data (GRID_SIZE: %d)\n", GRID_SIZE);
+    fprintf(fp, "# Format: r,g,b,a\n\n");
 
     for (int y = 0; y < GRID_SIZE; y++) {
-        offset += sprintf(textBuffer + offset, "Row %03d: ", y); // Indicate the row number
-        for (int x = 0; x < GRID_SIZE; x++) {
-            // Format: r,g,b,a with zero padding
-            offset += sprintf(textBuffer + offset, "%03d,%03d,%03d,%03d", canvas[y][x].r, canvas[y][x].g, canvas[y][x].b, canvas[y][x].a);
-            if (x < GRID_SIZE - 1) {
-                offset += sprintf(textBuffer + offset, " | "); // Use a separator between colors
-            }
-        }
-        offset += sprintf(textBuffer + offset, "\n"); // Newline after each row
+      fprintf(fp, "Row %03d: ", y);
+      for (int x = 0; x < GRID_SIZE; x++) {
+        fprintf(fp, "%03d,%03d,%03d,%03d", canvas[y][x].r, canvas[y][x].g, canvas[y][x].b, canvas[y][x].a);
+        if (x < GRID_SIZE - 1) fprintf(fp, " | ");
+      }
+      fputc('\n', fp);
     }
 
-    // Save the text data to a file
-    char newFilename[1024];
-    snprintf(newFilename, sizeof(newFilename), "%s/%s.bin", libraryDir, filename);
-    if (!SaveFileText(newFilename, textBuffer)) {
-        TraceLog(LOG_ERROR, "Error saving file.\n");
+    if (fclose(fp) != 0) {
+      TraceLog(LOG_ERROR, "Error writing file: %s", newFilename);
     }
-
-    free(textBuffer);
 }
 
 static void btnLoadText(const char *filename) {
-    // Load the text data from the file
+    char baseName[256] = {0};
+    if (sscanf(filename, "%255[^.]", baseName) != 1) return;
+
     char newFilename[1024];
-    snprintf(newFilename, sizeof(newFilename), "%s/%s.bin", libraryDir, filename);
+    snprintf(newFilename, sizeof(newFilename), "%s/%s.txt", libraryDir, baseName);
     char *textData = LoadFileText(newFilename);
     if (textData == NULL) {
         TraceLog(LOG_ERROR, "Could not load file: %s", filename);
@@ -353,7 +417,6 @@ static void btnLoadText(const char *filename) {
 
     // Parse the text data
     char *lineStart = textData;
-    int lineCount = 0;
 
     while (*lineStart != '\0') {
         // Find the end of the line
@@ -364,18 +427,13 @@ static void btnLoadText(const char *filename) {
         char temp = *lineEnd;
         *lineEnd = '\0';
 
-        // Skip header and comment lines
-        if (lineCount >= 2) { // Start processing from the third line (index 2)
-            // TraceLog(LOG_INFO, "Processing line: %s", lineStart);
-            parseLine(lineStart, lineCount - 3); // Adjust for skipped lines
-        }
+        parseLine(lineStart);
 
         // Restore the original character
         *lineEnd = temp;
 
         // Move to the next line
         lineStart = (*lineEnd == '\n') ? lineEnd + 1 : lineEnd; // Skip \n
-        lineCount++;
     }
     UnloadFileText(textData);
 }
@@ -401,24 +459,32 @@ static void PaintBrush(int gx, int gy, Color color, int brushSize) {
   }
 }
 
-static void parseLine(const char *line, int rowIndex) {
-    char *dataPart = strchr(line, ':'); // Find the colon
-    if (dataPart != NULL) {
-        dataPart += 2; // Move past ": "
-        char *colorToken = strtok(dataPart, " | "); // Split by separator
+static void parseLine(char *line) {
+    int rowIndex = -1;
+    if (sscanf(line, "Row %d:", &rowIndex) != 1) return;
+    if (rowIndex < 0 || rowIndex >= GRID_SIZE) {
+        TraceLog(LOG_WARNING, "Skipping out-of-range row index: %d", rowIndex);
+        return;
+    }
 
-        for (int x = 0; x < GRID_SIZE && colorToken != NULL; x++) {
-            int r, g, b, a;
-            if (sscanf(colorToken, "%3d,%3d,%3d,%3d", &r, &g, &b, &a) == 4) {
-                canvas[rowIndex][x] = (Color){(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a};
-                // TraceLog(LOG_DEBUG, "Loaded color at [%d][%d]: R=%d, G=%d, B=%d, A=%d", rowIndex, x, r, g, b, a);
-            } else {
-                TraceLog(LOG_WARNING, "Error parsing color at [%d][%d]: %s", rowIndex, x, colorToken);
-            }
-            colorToken = strtok(NULL, " | "); // Get the next color token
+    char *dataPart = strchr(line, ':');
+    if (dataPart == NULL) return;
+    dataPart++;
+    while (*dataPart != '\0' && isspace((unsigned char)*dataPart)) dataPart++;
+
+    char *colorToken = strtok(dataPart, "|");
+    for (int x = 0; x < GRID_SIZE && colorToken != NULL; x++) {
+        while (*colorToken != '\0' && isspace((unsigned char)*colorToken)) colorToken++;
+
+        int r, g, b, a;
+        if (sscanf(colorToken, "%3d,%3d,%3d,%3d", &r, &g, &b, &a) == 4 &&
+            r >= 0 && r <= 255 && g >= 0 && g <= 255 &&
+            b >= 0 && b <= 255 && a >= 0 && a <= 255) {
+            canvas[rowIndex][x] = (Color){(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a};
+        } else {
+            TraceLog(LOG_WARNING, "Error parsing color at row %d col %d: %s", rowIndex, x, colorToken);
         }
-    } else {
-        TraceLog(LOG_WARNING, "No data found for Row %03d", rowIndex);
+        colorToken = strtok(NULL, "|");
     }
 }
 
