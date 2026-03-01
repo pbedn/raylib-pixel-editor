@@ -79,6 +79,7 @@ static void btnSaveText(const char *filename);
 static void btnLoadText(const char *filename);
 static void parseLine(const char *line, int rowIndex);
 static void NewCanvas();
+static void PaintBrush(int gx, int gy, Color color, int brushSize);
 static void InitRuntimePaths(void);
 static void InitUserLibraryDir(void);
 
@@ -133,12 +134,18 @@ int main(void) {
   int selectedPaletteIndex = 6;
   int toggleThemeSliderActive = 0;
   int prevToggleThemeSliderActive = 1;
+  int brushSize = 1;
 
   while (!WindowShouldClose()) {
     // Handle mouse
     Vector2 mouse = GetMousePosition();
     int gx = (mouse.x - gridOriginX) / PIXEL_SIZE;
     int gy = (mouse.y - gridOriginY) / PIXEL_SIZE;
+    float wheel = GetMouseWheelMove();
+    if (wheel > 0.0f) brushSize++;
+    else if (wheel < 0.0f) brushSize--;
+    if (brushSize < 1) brushSize = 1;
+    if (brushSize > GRID_SIZE) brushSize = GRID_SIZE;
 
     // ─────────── Logic ─────────────
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
@@ -147,7 +154,7 @@ int main(void) {
 
         // Set the canvas color at the calculated grid position
       } else if (CheckCollisionPointRec(mouse, gridBounds) && !showTextInputBox && !showTextInputBox2 && !showTextInputBox3) {
-        canvas[gy][gx] = currentColor;
+        PaintBrush(gx, gy, currentColor, brushSize);
 
         // Set the palette color at the calculated palette position
       } else {
@@ -172,7 +179,7 @@ int main(void) {
       }
     } else if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && !GuiIsLocked()) {
       // Clear pixel on right-click if within bounds
-      if (CheckCollisionPointRec(mouse, gridBounds)) canvas[gy][gx] = BLANK;
+      if (CheckCollisionPointRec(mouse, gridBounds)) PaintBrush(gx, gy, BLANK, brushSize);
     }
 
     // ─────────── Drawing UI ─────────────
@@ -245,8 +252,8 @@ int main(void) {
     // Bottom status bar
     DrawRectangle(0, screenHeight - BOTTOM_BAR_HEIGHT, screenWidth, BOTTOM_BAR_HEIGHT, LIGHTGRAY);
     DrawTextEx(uiFont,
-               TextFormat("Palette: %s | Color: #%02X%02X%02X", palettes[currentPaletteIndex].name,
-                          currentColor.r, currentColor.g, currentColor.b),
+               TextFormat("Palette: %s | Color: #%02X%02X%02X | Brush: %d", palettes[currentPaletteIndex].name,
+                          currentColor.r, currentColor.g, currentColor.b, brushSize),
                (Vector2){10, screenHeight - BOTTOM_BAR_HEIGHT + 8}, uiFont.baseSize * 0.26f, 1,
                BLACK);
 
@@ -377,6 +384,20 @@ static void NewCanvas() {
   for (int y = 0; y < GRID_SIZE; y++) {
       for (int x = 0; x < GRID_SIZE; x++)
           canvas[y][x] = BLANK;
+  }
+}
+
+static void PaintBrush(int gx, int gy, Color color, int brushSize) {
+  int startX = gx - brushSize / 2;
+  int startY = gy - brushSize / 2;
+
+  for (int y = 0; y < brushSize; y++) {
+    for (int x = 0; x < brushSize; x++) {
+      int px = startX + x;
+      int py = startY + y;
+      if (px < 0 || px >= GRID_SIZE || py < 0 || py >= GRID_SIZE) continue;
+      canvas[py][px] = color;
+    }
   }
 }
 
