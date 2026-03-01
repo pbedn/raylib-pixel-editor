@@ -132,8 +132,11 @@ int main(void) {
   int toggleThemeSliderActive = 0;
   int prevToggleThemeSliderActive = 1;
   int brushSize = 1;
+  bool drawingStrokeActive = false;
 
   while (!WindowShouldClose()) {
+    bool suppressUiActionsThisFrame = false;
+
     if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) {
       PixelUiLogicOpenQuitConfirm(&uiState);
     }
@@ -151,8 +154,23 @@ int main(void) {
     if (brushSize > GRID_SIZE) brushSize = GRID_SIZE;
 
     // ─────────── Logic ─────────────
+    if (!uiState.showQuitConfirm && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, gridBounds) &&
+        !uiState.showSavePngDialog && !uiState.showSaveTxtDialog && !uiState.showLoadTxtDialog) {
+      drawingStrokeActive = true;
+    }
+
+    if (drawingStrokeActive && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+      drawingStrokeActive = false;
+      suppressUiActionsThisFrame = true;
+    }
+
     if (!uiState.showQuitConfirm && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-      if (CheckCollisionPointRec(mouse, dropdownBounds)) {
+      if (drawingStrokeActive) {
+        if (CheckCollisionPointRec(mouse, gridBounds)) {
+          PixelPaintBrush(&canvas[0][0], GRID_SIZE, gx, gy, currentColor, brushSize);
+        }
+      } else if (CheckCollisionPointRec(mouse, dropdownBounds)) {
         selectedPaletteIndex = !selectedPaletteIndex;  // Toggle dropdown
 
         // Set the canvas color at the calculated grid position
@@ -191,19 +209,27 @@ int main(void) {
     ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
     // ==== Top bar ====
-    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG"))) {
+    if (!uiState.showQuitConfirm &&
+        GuiButton((Rectangle){ 10, 5, 100, 30 }, GuiIconText(ICON_FILE_SAVE, "Save as PNG")) &&
+        !drawingStrokeActive && !suppressUiActionsThisFrame) {
       PixelUiLogicOpenDialog(&uiState, PIXEL_DIALOG_SAVE_PNG);
     }
 
-    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT"))) {
+    if (!uiState.showQuitConfirm &&
+        GuiButton((Rectangle){ 120, 5, 100, 30 }, GuiIconText(ICON_FILE_EXPORT, "Save as TXT")) &&
+        !drawingStrokeActive && !suppressUiActionsThisFrame) {
       PixelUiLogicOpenDialog(&uiState, PIXEL_DIALOG_SAVE_TXT);
     }
 
-    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT"))) {
+    if (!uiState.showQuitConfirm &&
+        GuiButton((Rectangle){ 230, 5, 100, 30 }, GuiIconText(ICON_FILE_OPEN, "Load TXT")) &&
+        !drawingStrokeActive && !suppressUiActionsThisFrame) {
       PixelUiLogicOpenDialog(&uiState, PIXEL_DIALOG_LOAD_TXT);
     }
 
-    if (!uiState.showQuitConfirm && GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas"))) NewCanvas();
+    if (!uiState.showQuitConfirm &&
+        GuiButton((Rectangle){ 340, 5, 100, 30 }, GuiIconText(ICON_RUBBER, "New Canvas")) &&
+        !drawingStrokeActive && !suppressUiActionsThisFrame) NewCanvas();
 
     // Light / Dark Slider
     GuiSetStyle(SLIDER, SLIDER_PADDING, 2);
@@ -242,8 +268,9 @@ int main(void) {
     }
 
     // Draw dropdown for palette selection using Raygui
-    if (!uiState.showQuitConfirm && GuiDropdownBox(dropdownBounds, dropdownBuffer,
-                       &selectedPaletteIndex, dropdownActive)) {
+    if (!uiState.showQuitConfirm &&
+        GuiDropdownBox(dropdownBounds, dropdownBuffer, &selectedPaletteIndex, dropdownActive) &&
+        !drawingStrokeActive && !suppressUiActionsThisFrame) {
       dropdownActive = !dropdownActive;                        // Toggle dropdown state
       currentPaletteIndex = selectedPaletteIndex;              // Update the current palette index
       currentColor = palettes[currentPaletteIndex].colors[0];  // Set the current color to the first
