@@ -80,6 +80,7 @@ static void btnLoadText(const char *filename);
 static void parseLine(const char *line, int rowIndex);
 static void NewCanvas();
 static void InitRuntimePaths(void);
+static void InitUserLibraryDir(void);
 
 void LoadPalettesFromDir(const char *dirPath);
 void DropdownBufferString();
@@ -290,6 +291,9 @@ static void btnSaveAsPNG(const char * textInput) {
   snprintf(filename, sizeof(filename), "%s/%s.png", libraryDir, textInput);
   ExportImage(image, filename);
   UnloadImage(image);
+
+  // Keep a loadable project snapshot alongside every PNG export.
+  btnSaveText(textInput);
 }
 
 static void btnSaveText(const char *filename) {
@@ -398,25 +402,48 @@ static void parseLine(const char *line, int rowIndex) {
 }
 
 static void InitRuntimePaths(void) {
-  // Development mode defaults (run from repository root)
+  // Development mode defaults (assets from repository root)
   TextCopy(fontPath, "fonts/PressStart2P-Regular.ttf");
   TextCopy(palettesDir, "palettes");
-  TextCopy(libraryDir, "library");
 
-  if (FileExists(fontPath) && DirectoryExists(palettesDir)) {
+  // Installed layout fallback: /usr/bin/pixel -> /usr/share/pixel/{fonts,palettes}
+  if (!FileExists(fontPath) || !DirectoryExists(palettesDir)) {
+    const char *appDir = GetApplicationDirectory();
+    char shareDir[512] = {0};
+    if (appDir && appDir[0] != '\0') {
+      snprintf(shareDir, sizeof(shareDir), "%s../share/pixel", appDir);
+      snprintf(fontPath, sizeof(fontPath), "%s/fonts/PressStart2P-Regular.ttf", shareDir);
+      snprintf(palettesDir, sizeof(palettesDir), "%s/palettes", shareDir);
+    }
+  }
+
+  InitUserLibraryDir();
+}
+
+static void InitUserLibraryDir(void) {
+#if defined(_WIN32)
+  const char *base = getenv("LOCALAPPDATA");
+  if (!base || base[0] == '\0') base = getenv("APPDATA");
+  if (base && base[0] != '\0') {
+    char appDir[512] = {0};
+    snprintf(appDir, sizeof(appDir), "%s/pixel", base);
+    MakeDirectory(appDir);
+    snprintf(libraryDir, sizeof(libraryDir), "%s/library", appDir);
+    MakeDirectory(libraryDir);
+    return;
+  }
+#else
+  const char *xdgData = getenv("XDG_DATA_HOME");
+  if (xdgData && xdgData[0] != '\0') {
+    char appDir[512] = {0};
+    MakeDirectory(xdgData);
+    snprintf(appDir, sizeof(appDir), "%s/pixel", xdgData);
+    MakeDirectory(appDir);
+    snprintf(libraryDir, sizeof(libraryDir), "%s/library", appDir);
+    MakeDirectory(libraryDir);
     return;
   }
 
-  // Installed layout fallback: /usr/bin/pixel -> /usr/share/pixel/{fonts,palettes}
-  const char *appDir = GetApplicationDirectory();
-  if (appDir && appDir[0] != '\0') {
-    char shareDir[512] = {0};
-    snprintf(shareDir, sizeof(shareDir), "%s../share/pixel", appDir);
-    snprintf(fontPath, sizeof(fontPath), "%s/fonts/PressStart2P-Regular.ttf", shareDir);
-    snprintf(palettesDir, sizeof(palettesDir), "%s/palettes", shareDir);
-  }
-
-  // Save user files in a writable per-user location on Unix-like systems.
   const char *home = getenv("HOME");
   if (home && home[0] != '\0') {
     char path[512] = {0};
@@ -428,7 +455,13 @@ static void InitRuntimePaths(void) {
     MakeDirectory(path);
     snprintf(libraryDir, sizeof(libraryDir), "%s/.local/share/pixel/library", home);
     MakeDirectory(libraryDir);
+    return;
   }
+#endif
+
+  // Last-resort fallback if no platform env path is available.
+  TextCopy(libraryDir, "library");
+  MakeDirectory(libraryDir);
 }
 
 //------------------------------------------------------------------------------------
